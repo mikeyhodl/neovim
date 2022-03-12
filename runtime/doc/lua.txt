@@ -1259,6 +1259,10 @@ vim.wo                                                  *vim.wo*
 ==============================================================================
 Lua module: vim                                                      *lua-vim*
 
+                                             *vim.connection_failure_errmsg()*
+connection_failure_errmsg({consequence})
+                TODO: Documentation
+
 defer_fn({fn}, {timeout})                                     *vim.defer_fn()*
                 Defers calling `fn` until `timeout` ms passes.
 
@@ -1990,9 +1994,9 @@ set({mode}, {lhs}, {rhs}, {opts})                           *vim.keymap.set()*
                     vim.keymap.set('n', 'asdf', require('jkl').my_fun)
 <
 
-                the require('jkl') gets evaluated during this call in order to
-                access the function. If you want to avoid this cost at startup
-                you can wrap it in a function, for example: >
+                the require('jkl )` gets evaluated during this call in order to access the
+                function. If you want to avoid this cost at startup you can
+                wrap it in a function, for example: >
 
                     vim.keymap.set('n', 'asdf', function() return require('jkl').my_fun() end)
 <
