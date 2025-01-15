@@ -1,12 +1,7 @@
-#ifndef NVIM_LUA_SPELL_H
-#define NVIM_LUA_SPELL_H
+#pragma once
 
-#include <lauxlib.h>
-#include <lua.h>
-#include <lualib.h>
+#include <lua.h>  // IWYU pragma: keep
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "lua/spell.h.generated.h"
 #endif
-
-#endif  // NVIM_LUA_SPELL_H

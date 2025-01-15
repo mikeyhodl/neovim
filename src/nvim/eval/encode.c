@@ -1,33 +1,37 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 /// @file encode.c
 ///
-/// File containing functions for encoding and decoding VimL values.
+/// File containing functions for encoding and decoding Vimscript values.
 ///
 /// Split out from eval.c.
 
 #include <assert.h>
 #include <inttypes.h>
 #include <math.h>
-#include <msgpack.h>
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "klib/kvec.h"
-#include "nvim/ascii.h"
-#include "nvim/buffer_defs.h"
-#include "nvim/charset.h"  // vim_isprintc()
+#include "nvim/api/private/helpers.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/eval.h"
 #include "nvim/eval/encode.h"
 #include "nvim/eval/typval.h"
 #include "nvim/eval/typval_encode.h"
 #include "nvim/garray.h"
-#include "nvim/macros.h"
+#include "nvim/gettext_defs.h"
+#include "nvim/globals.h"
+#include "nvim/hashtab.h"
+#include "nvim/macros_defs.h"
 #include "nvim/math.h"
 #include "nvim/mbyte.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
-#include "nvim/vim.h"  // For _()
+#include "nvim/msgpack_rpc/packer.h"
+#include "nvim/strings.h"
+#include "nvim/types_defs.h"
+#include "nvim/vim_defs.h"  // For _()
 
 const char *const encode_bool_var_names[] = {
   [kBoolVarTrue] = "v:true",
@@ -51,11 +55,11 @@ int encode_blob_write(void *const data, const char *const buf, const size_t len)
 }
 
 /// Msgpack callback for writing to readfile()-style list
-int encode_list_write(void *const data, const char *const buf, const size_t len)
+void encode_list_write(void *const data, const char *const buf, const size_t len)
   FUNC_ATTR_NONNULL_ARG(1)
 {
   if (len == 0) {
-    return 0;
+    return;
   }
   list_T *const list = (list_T *)data;
   const char *const end = buf + len;
@@ -93,7 +97,6 @@ int encode_list_write(void *const data, const char *const buf, const size_t len)
   if (line_end == end) {
     tv_list_append_allocated_string(list, NULL);
   }
-  return 0;
 }
 
 /// Abort conversion to string after a recursion error.
@@ -131,14 +134,14 @@ static int conv_error(const char *const msg, const MPConvStack *const mpstack,
       typval_T key_tv = {
         .v_type = VAR_STRING,
         .vval = { .v_string =
-                    (char *)(v.data.d.hi ==
-                             NULL ? v.data.d.dict->dv_hashtab.ht_array : (v.data.d.hi -
-                                                                          1))->hi_key },
+                    (v.data.d.hi ==
+                     NULL ? v.data.d.dict->dv_hashtab.ht_array : (v.data.d.hi -
+                                                                  1))->hi_key },
       };
       char *const key = encode_tv2string(&key_tv, NULL);
-      vim_snprintf((char *)IObuff, IOSIZE, key_msg, key);
+      vim_snprintf(IObuff, IOSIZE, key_msg, key);
       xfree(key);
-      ga_concat(&msg_ga, (char *)IObuff);
+      ga_concat(&msg_ga, IObuff);
       break;
     }
     case kMPConvPairs:
@@ -147,9 +150,9 @@ static int conv_error(const char *const msg, const MPConvStack *const mpstack,
                        ? 0
                        : (v.data.l.li == NULL
                           ? tv_list_len(v.data.l.list) - 1
-                          : (int)tv_list_idx_of_item(v.data.l.list,
-                                                     TV_LIST_ITEM_PREV(v.data.l.list,
-                                                                       v.data.l.li))));
+                          : tv_list_idx_of_item(v.data.l.list,
+                                                TV_LIST_ITEM_PREV(v.data.l.list,
+                                                                  v.data.l.li))));
       const listitem_T *const li = (v.data.l.li == NULL
                                     ? tv_list_last(v.data.l.list)
                                     : TV_LIST_ITEM_PREV(v.data.l.list,
@@ -158,8 +161,8 @@ static int conv_error(const char *const msg, const MPConvStack *const mpstack,
           || li == NULL
           || (TV_LIST_ITEM_TV(li)->v_type != VAR_LIST
               && tv_list_len(TV_LIST_ITEM_TV(li)->vval.v_list) <= 0)) {
-        vim_snprintf((char *)IObuff, IOSIZE, idx_msg, idx);
-        ga_concat(&msg_ga, (char *)IObuff);
+        vim_snprintf(IObuff, IOSIZE, idx_msg, idx);
+        ga_concat(&msg_ga, IObuff);
       } else {
         assert(li != NULL);
         listitem_T *const first_item =
@@ -167,9 +170,9 @@ static int conv_error(const char *const msg, const MPConvStack *const mpstack,
         assert(first_item != NULL);
         typval_T key_tv = *TV_LIST_ITEM_TV(first_item);
         char *const key = encode_tv2echo(&key_tv, NULL);
-        vim_snprintf((char *)IObuff, IOSIZE, key_pair_msg, key, idx);
+        vim_snprintf(IObuff, IOSIZE, key_pair_msg, key, idx);
         xfree(key);
-        ga_concat(&msg_ga, (char *)IObuff);
+        ga_concat(&msg_ga, IObuff);
       }
       break;
     }
@@ -188,8 +191,8 @@ static int conv_error(const char *const msg, const MPConvStack *const mpstack,
       break;
     case kMPConvPartialList: {
       const int idx = (int)(v.data.a.arg - v.data.a.argv) - 1;
-      vim_snprintf((char *)IObuff, IOSIZE, partial_arg_i_msg, idx);
-      ga_concat(&msg_ga, (char *)IObuff);
+      vim_snprintf(IObuff, IOSIZE, partial_arg_i_msg, idx);
+      ga_concat(&msg_ga, IObuff);
       break;
     }
     }
@@ -293,7 +296,7 @@ int encode_read_from_list(ListReaderState *const state, char *const buf, const s
 
 #define TYPVAL_ENCODE_CONV_STRING(tv, buf, len) \
   do { \
-    const char *const buf_ = (const char *)(buf); \
+    const char *const buf_ = (buf); \
     if ((buf) == NULL) { \
       ga_concat(gap, "''"); \
     } else { \
@@ -304,7 +307,7 @@ int encode_read_from_list(ListReaderState *const state, char *const buf, const s
         if (buf_[i_] == '\'') { \
           ga_append(gap, '\''); \
         } \
-        ga_append(gap, buf_[i_]); \
+        ga_append(gap, (uint8_t)buf_[i_]); \
       } \
       ga_append(gap, '\''); \
     } \
@@ -371,7 +374,7 @@ int encode_read_from_list(ListReaderState *const state, char *const buf, const s
 
 #define TYPVAL_ENCODE_CONV_FUNC_START(tv, fun) \
   do { \
-    const char *const fun_ = (const char *)(fun); \
+    const char *const fun_ = (fun); \
     if (fun_ == NULL) { \
       internal_error("string(): NULL function name"); \
       ga_concat(gap, "function(NULL"); \
@@ -409,11 +412,13 @@ int encode_read_from_list(ListReaderState *const state, char *const buf, const s
 #define TYPVAL_ENCODE_CONV_EMPTY_DICT(tv, dict) \
   ga_concat(gap, "{}")
 
+#define TYPVAL_ENCODE_CHECK_BEFORE
+
 #define TYPVAL_ENCODE_CONV_NIL(tv) \
   ga_concat(gap, "v:null")
 
 #define TYPVAL_ENCODE_CONV_BOOL(tv, num) \
-  ga_concat(gap, ((num)? "v:true": "v:false"))
+  ga_concat(gap, ((num) ? "v:true" : "v:false"))
 
 #define TYPVAL_ENCODE_CONV_UNSIGNED_NUMBER(tv, num)
 
@@ -533,13 +538,15 @@ int encode_read_from_list(ListReaderState *const state, char *const buf, const s
 #undef TYPVAL_ENCODE_ALLOW_SPECIALS
 #define TYPVAL_ENCODE_ALLOW_SPECIALS true
 
+#define TYPVAL_ENCODE_CHECK_BEFORE
+
 #undef TYPVAL_ENCODE_CONV_NIL
 #define TYPVAL_ENCODE_CONV_NIL(tv) \
   ga_concat(gap, "null")
 
 #undef TYPVAL_ENCODE_CONV_BOOL
 #define TYPVAL_ENCODE_CONV_BOOL(tv, num) \
-  ga_concat(gap, ((num)? "true": "false"))
+  ga_concat(gap, ((num) ? "true" : "false"))
 
 #undef TYPVAL_ENCODE_CONV_UNSIGNED_NUMBER
 #define TYPVAL_ENCODE_CONV_UNSIGNED_NUMBER(tv, num) \
@@ -707,7 +714,7 @@ static inline int convert_to_json_string(garray_T *const gap, const char *const 
 #undef TYPVAL_ENCODE_CONV_STRING
 #define TYPVAL_ENCODE_CONV_STRING(tv, buf, len) \
   do { \
-    if (convert_to_json_string(gap, (const char *)(buf), (len)) != OK) { \
+    if (convert_to_json_string(gap, (buf), (len)) != OK) { \
       return FAIL; \
     } \
   } while (0)
@@ -768,8 +775,7 @@ bool encode_check_json_key(const typval_T *const tv)
   const dictitem_T *val_di;
   if ((type_di = tv_dict_find(spdict, S_LEN("_TYPE"))) == NULL
       || type_di->di_tv.v_type != VAR_LIST
-      || (type_di->di_tv.vval.v_list != eval_msgpack_type_lists[kMPString]
-          && type_di->di_tv.vval.v_list != eval_msgpack_type_lists[kMPBinary])
+      || type_di->di_tv.vval.v_list != eval_msgpack_type_lists[kMPString]
       || (val_di = tv_dict_find(spdict, S_LEN("_VAL"))) == NULL
       || val_di->di_tv.v_type != VAR_LIST) {
     return false;
@@ -818,6 +824,7 @@ bool encode_check_json_key(const typval_T *const tv)
 #undef TYPVAL_ENCODE_CONV_LIST_START
 #undef TYPVAL_ENCODE_CONV_REAL_LIST_AFTER_START
 #undef TYPVAL_ENCODE_CONV_EMPTY_DICT
+#undef TYPVAL_ENCODE_CHECK_BEFORE
 #undef TYPVAL_ENCODE_CONV_NIL
 #undef TYPVAL_ENCODE_CONV_BOOL
 #undef TYPVAL_ENCODE_CONV_UNSIGNED_NUMBER
@@ -852,7 +859,7 @@ char *encode_tv2string(typval_T *tv, size_t *len)
   if (len != NULL) {
     *len = (size_t)ga.ga_len;
   }
-  ga_append(&ga, '\0');
+  ga_append(&ga, NUL);
   return (char *)ga.ga_data;
 }
 
@@ -880,7 +887,7 @@ char *encode_tv2echo(typval_T *tv, size_t *len)
   if (len != NULL) {
     *len = (size_t)ga.ga_len;
   }
-  ga_append(&ga, '\0');
+  ga_append(&ga, NUL);
   return (char *)ga.ga_data;
 }
 
@@ -905,57 +912,27 @@ char *encode_tv2json(typval_T *tv, size_t *len)
   if (len != NULL) {
     *len = (size_t)ga.ga_len;
   }
-  ga_append(&ga, '\0');
+  ga_append(&ga, NUL);
   return (char *)ga.ga_data;
 }
 
 #define TYPVAL_ENCODE_CONV_STRING(tv, buf, len) \
-  do { \
-    if ((buf) == NULL) { \
-      msgpack_pack_bin(packer, 0); \
-    } else { \
-      const size_t len_ = (len); \
-      msgpack_pack_bin(packer, len_); \
-      msgpack_pack_bin_body(packer, buf, len_); \
-    } \
-  } while (0)
+  mpack_bin(cbuf_as_string(buf, (len)), packer); \
 
 #define TYPVAL_ENCODE_CONV_STR_STRING(tv, buf, len) \
-  do { \
-    if ((buf) == NULL) { \
-      msgpack_pack_str(packer, 0); \
-    } else { \
-      const size_t len_ = (len); \
-      msgpack_pack_str(packer, len_); \
-      msgpack_pack_str_body(packer, buf, len_); \
-    } \
-  } while (0)
+  mpack_str(cbuf_as_string(buf, (len)), packer); \
 
 #define TYPVAL_ENCODE_CONV_EXT_STRING(tv, buf, len, type) \
-  do { \
-    if ((buf) == NULL) { \
-      msgpack_pack_ext(packer, 0, (int8_t)(type)); \
-    } else { \
-      const size_t len_ = (len); \
-      msgpack_pack_ext(packer, len_, (int8_t)(type)); \
-      msgpack_pack_ext_body(packer, buf, len_); \
-    } \
-  } while (0)
+  mpack_ext(buf, (len), (int8_t)(type), packer); \
 
 #define TYPVAL_ENCODE_CONV_BLOB(tv, blob, len) \
-  do { \
-    const size_t len_ = (size_t)(len); \
-    msgpack_pack_bin(packer, len_); \
-    if (len_ > 0) { \
-      msgpack_pack_bin_body(packer, (blob)->bv_ga.ga_data, len_); \
-    } \
-  } while (0)
+  mpack_bin(cbuf_as_string((blob) ? (blob)->bv_ga.ga_data : NULL, (size_t)(len)), packer);
 
 #define TYPVAL_ENCODE_CONV_NUMBER(tv, num) \
-  msgpack_pack_int64(packer, (int64_t)(num))
+  mpack_integer(&packer->ptr, (Integer)(num))
 
 #define TYPVAL_ENCODE_CONV_FLOAT(tv, flt) \
-  msgpack_pack_double(packer, (double)(flt))
+  mpack_float8(&packer->ptr, (double)(flt))
 
 #define TYPVAL_ENCODE_CONV_FUNC_START(tv, fun) \
   return conv_error(_("E5004: Error while dumping %s, %s: " \
@@ -967,33 +944,30 @@ char *encode_tv2json(typval_T *tv, size_t *len)
 #define TYPVAL_ENCODE_CONV_FUNC_END(tv)
 
 #define TYPVAL_ENCODE_CONV_EMPTY_LIST(tv) \
-  msgpack_pack_array(packer, 0)
+  mpack_array(&packer->ptr, 0)
 
 #define TYPVAL_ENCODE_CONV_LIST_START(tv, len) \
-  msgpack_pack_array(packer, (size_t)(len))
+  mpack_array(&packer->ptr, (uint32_t)(len))
 
 #define TYPVAL_ENCODE_CONV_REAL_LIST_AFTER_START(tv, mpsv)
 
 #define TYPVAL_ENCODE_CONV_EMPTY_DICT(tv, dict) \
-  msgpack_pack_map(packer, 0)
+  mpack_map(&packer->ptr, 0)
+
+#define TYPVAL_ENCODE_CHECK_BEFORE \
+  mpack_check_buffer(packer)
 
 #define TYPVAL_ENCODE_CONV_NIL(tv) \
-  msgpack_pack_nil(packer)
+  mpack_nil(&packer->ptr)
 
 #define TYPVAL_ENCODE_CONV_BOOL(tv, num) \
-  do { \
-    if (num) { \
-      msgpack_pack_true(packer); \
-    } else { \
-      msgpack_pack_false(packer); \
-    } \
-  } while (0)
+  mpack_bool(&packer->ptr, (bool)num); \
 
 #define TYPVAL_ENCODE_CONV_UNSIGNED_NUMBER(tv, num) \
-  msgpack_pack_uint64(packer, (num))
+  mpack_uint64(&packer->ptr, (num))
 
 #define TYPVAL_ENCODE_CONV_DICT_START(tv, dict, len) \
-  msgpack_pack_map(packer, (size_t)(len))
+  mpack_map(&packer->ptr, (uint32_t)(len))
 
 #define TYPVAL_ENCODE_CONV_REAL_DICT_AFTER_START(tv, dict, mpsv)
 
@@ -1018,7 +992,7 @@ char *encode_tv2json(typval_T *tv, size_t *len)
 
 #define TYPVAL_ENCODE_SCOPE
 #define TYPVAL_ENCODE_NAME msgpack
-#define TYPVAL_ENCODE_FIRST_ARG_TYPE msgpack_packer *const
+#define TYPVAL_ENCODE_FIRST_ARG_TYPE PackerBuffer *const
 #define TYPVAL_ENCODE_FIRST_ARG_NAME packer
 #include "nvim/eval/typval_encode.c.h"
 #undef TYPVAL_ENCODE_SCOPE
@@ -1040,6 +1014,7 @@ char *encode_tv2json(typval_T *tv, size_t *len)
 #undef TYPVAL_ENCODE_CONV_LIST_START
 #undef TYPVAL_ENCODE_CONV_REAL_LIST_AFTER_START
 #undef TYPVAL_ENCODE_CONV_EMPTY_DICT
+#undef TYPVAL_ENCODE_CHECK_BEFORE
 #undef TYPVAL_ENCODE_CONV_NIL
 #undef TYPVAL_ENCODE_CONV_BOOL
 #undef TYPVAL_ENCODE_CONV_UNSIGNED_NUMBER
@@ -1053,3 +1028,17 @@ char *encode_tv2json(typval_T *tv, size_t *len)
 #undef TYPVAL_ENCODE_CONV_LIST_BETWEEN_ITEMS
 #undef TYPVAL_ENCODE_CONV_RECURSE
 #undef TYPVAL_ENCODE_ALLOW_SPECIALS
+
+/// Initialize ListReaderState structure
+ListReaderState encode_init_lrstate(const list_T *const list)
+  FUNC_ATTR_NONNULL_ALL
+{
+  return (ListReaderState) {
+    .list = list,
+    .li = tv_list_first(list),
+    .offset = 0,
+    .li_length = (TV_LIST_ITEM_TV(tv_list_first(list))->vval.v_string == NULL
+                  ? 0
+                  : strlen(TV_LIST_ITEM_TV(tv_list_first(list))->vval.v_string)),
+  };
+}

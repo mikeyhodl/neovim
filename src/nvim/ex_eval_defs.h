@@ -1,7 +1,42 @@
-#ifndef NVIM_EX_EVAL_DEFS_H
-#define NVIM_EX_EVAL_DEFS_H
+#pragma once
 
-#include "nvim/pos.h"           // for linenr_T
+#include <stdbool.h>
+
+#include "nvim/eval/typval_defs.h"
+#include "nvim/pos_defs.h"
+
+/// A list used for saving values of "emsg_silent".  Used by ex_try() to save the
+/// value of "emsg_silent" if it was non-zero.  When this is done, the CSF_SILENT
+/// flag below is set.
+typedef struct eslist_elem eslist_T;
+struct eslist_elem {
+  int saved_emsg_silent;  ///< saved value of "emsg_silent"
+  eslist_T *next;         ///< next element on the list
+};
+
+enum {
+  /// For conditional commands a stack is kept of nested conditionals.
+  /// When cs_idx < 0, there is no conditional command.
+  CSTACK_LEN = 50,
+};
+
+typedef struct {
+  int cs_flags[CSTACK_LEN];       ///< CSF_ flags
+  char cs_pending[CSTACK_LEN];    ///< CSTP_: what's pending in ":finally"
+  union {
+    void *csp_rv[CSTACK_LEN];     ///< return typeval for pending return
+    void *csp_ex[CSTACK_LEN];     ///< exception for pending throw
+  } cs_pend;
+  void *cs_forinfo[CSTACK_LEN];   ///< info used by ":for"
+  int cs_line[CSTACK_LEN];        ///< line nr of ":while"/":for" line
+  int cs_idx;                     ///< current entry, or -1 if none
+  int cs_looplevel;               ///< nr of nested ":while"s and ":for"s
+  int cs_trylevel;                ///< nr of nested ":try"s
+  eslist_T *cs_emsg_silent_list;  ///< saved values of "emsg_silent"
+  int cs_lflags;                  ///< loop flags: CSL_ flags
+} cstack_T;
+#define cs_rettv       cs_pend.csp_rv
+#define cs_exception   cs_pend.csp_ex
 
 /// There is no CSF_IF, the lack of CSF_WHILE, CSF_FOR and CSF_TRY means ":if"
 /// was used.
@@ -35,17 +70,26 @@ enum {
   CSTP_FINISH    = 32,  ///< ":finish" is pending
 };
 
+/// Flags for the cs_lflags item in cstack_T.
+enum {
+  CSL_HAD_LOOP = 1,     ///< just found ":while" or ":for"
+  CSL_HAD_ENDLOOP = 2,  ///< just found ":endwhile" or ":endfor"
+  CSL_HAD_CONT = 4,     ///< just found ":continue"
+  CSL_HAD_FINA = 8,     ///< just found ":finally"
+};
+
 /// A list of error messages that can be converted to an exception.  "throw_msg"
 /// is only set in the first element of the list.  Usually, it points to the
 /// original message stored in that element, but sometimes it points to a later
 /// message in the list.  See cause_errthrow().
 typedef struct msglist msglist_T;
 struct msglist {
+  msglist_T *next;  ///< next of several messages in a row
   char *msg;        ///< original message, allocated
   char *throw_msg;  ///< msg to throw: usually original one
   char *sfile;      ///< value from estack_sfile(), allocated
   linenr_T slnum;   ///< line number for "sfile"
-  msglist_T *next;  ///< next of several messages in a row
+  bool multiline;   ///< whether this is a multiline message
 };
 
 /// The exception types.
@@ -64,6 +108,7 @@ struct vim_exception {
   msglist_T *messages;  ///< message(s) causing error exception
   char *throw_name;     ///< name of the throw point
   linenr_T throw_lnum;  ///< line number of the throw point
+  list_T *stacktrace;   ///< stacktrace
   except_T *caught;     ///< next exception on the caught stack
 };
 
@@ -76,4 +121,13 @@ struct cleanup_stuff {
   except_T *exception;  ///< exception value
 };
 
-#endif  // NVIM_EX_EVAL_DEFS_H
+/// Exception state that is saved and restored when calling timer callback
+/// functions and deferred functions.
+typedef struct exception_state_S exception_state_T;
+struct exception_state_S {
+  except_T *estate_current_exception;
+  bool estate_did_throw;
+  bool estate_need_rethrow;
+  int estate_trylevel;
+  int estate_did_emsg;
+};

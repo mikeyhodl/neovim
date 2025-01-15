@@ -2,9 +2,10 @@
 -- First test for undo working properly when executing commands from a register.
 -- Also test this in an empty buffer.
 
-local helpers = require('test.functional.helpers')(after_each)
-local clear, feed, insert = helpers.clear, helpers.feed, helpers.insert
-local feed_command, expect = helpers.feed_command, helpers.expect
+local n = require('test.functional.testnvim')()
+
+local clear, feed, insert = n.clear, n.feed, n.insert
+local feed_command, expect = n.feed_command, n.expect
 
 describe('blockwise visual', function()
   setup(clear)

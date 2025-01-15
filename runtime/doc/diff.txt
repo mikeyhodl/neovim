@@ -125,7 +125,7 @@ file for a moment and come back to the same file and be in diff mode again.
 		buffers.
 
 The `:diffoff` command resets the relevant options to the values they had when
-using `:diffsplit`, `:diffpatch` , `:diffthis`. or starting Vim in diff mode.
+using `:diffsplit`, `:diffpatch`, `:diffthis`. or starting Vim in diff mode.
 When using `:diffoff` twice the last saved values are restored.
 Otherwise they are set to their default value:
 
@@ -136,6 +136,10 @@ Otherwise they are set to their default value:
 	'wrap'		on, or leave as-is if 'diffopt' includes "followwrap"
 	'foldmethod'	"manual"
 	'foldcolumn'	0
+
+'foldenable' will most-likely be reset to off.  That is when 'foldmethod' is
+restored to "manual".  The folds themselves are not cleared but they should
+not show up, resetting 'foldenable' is the best way to do that.
 
 ==============================================================================
 2. Viewing diffs						*view-diffs*
@@ -365,6 +369,9 @@ Additionally, 'diffexpr' should take care of "icase" and "iwhite" in the
 'diffopt' option.  'diffexpr' cannot change the value of 'lines' and
 'columns'.
 
+The advantage of using a function call without arguments is that it is faster,
+see |expr-option-function|.
+
 Example (this does almost the same as 'diffexpr' being empty): >
 
 	set diffexpr=MyDiff()
@@ -387,6 +394,13 @@ mode, so that a CTRL-Z doesn't end the text on DOS.
 
 The `redraw!` command may not be needed, depending on whether executing a
 shell command shows something on the display or not.
+
+If the 'diffexpr' expression starts with s: or |<SID>|, then it is replaced
+with the script ID (|local-function|). Example: >
+		set diffexpr=s:MyDiffExpr()
+		set diffexpr=<SID>SomeDiffExpr()
+Otherwise, the expression is evaluated in the context of the script where the
+option was set, thus script-local items are available.
 
 						*E810* *E97*
 Vim will do a test if the diff output looks alright.  If it doesn't, you will
@@ -423,6 +437,9 @@ will have the same effect.  These variables are set to the file names used:
 	v:fname_diff		patch file
 	v:fname_out		resulting patched file
 
+The advantage of using a function call without arguments is that it is faster,
+see |expr-option-function|.
+
 Example (this does the same as 'patchexpr' being empty): >
 
 	set patchexpr=MyPatch()
@@ -438,5 +455,13 @@ deleted.  It should just patch the file and nothing else.
 evaluating 'patchexpr'.  This hopefully avoids that files in the current
 directory are accidentally patched.  Vim will also delete files starting with
 v:fname_in and ending in ".rej" and ".orig".
+
+If the 'patchexpr' expression starts with s: or |<SID>|, then it is replaced
+with the script ID (|local-function|). Example: >
+		set patchexpr=s:MyPatchExpr()
+		set patchexpr=<SID>SomePatchExpr()
+Otherwise, the expression is evaluated in the context of the script where the
+option was set, thus script-local items are available.
+
 
  vim:tw=78:ts=8:noet:ft=help:norl:

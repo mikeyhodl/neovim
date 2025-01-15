@@ -1,10 +1,11 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
+#include <stddef.h>
 #include <uv.h>
 
+#include "nvim/event/defs.h"
 #include "nvim/event/loop.h"
+#include "nvim/event/multiqueue.h"
 #include "nvim/event/signal.h"
+#include "nvim/types_defs.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "event/signal.c.generated.h"
@@ -49,7 +50,7 @@ static void signal_event(void **argv)
 static void signal_watcher_cb(uv_signal_t *handle, int signum)
 {
   SignalWatcher *watcher = handle->data;
-  CREATE_EVENT(watcher->events, signal_event, 1, watcher);
+  CREATE_EVENT(watcher->events, signal_event, watcher);
 }
 
 static void close_cb(uv_handle_t *handle)

@@ -1,15 +1,16 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local clear = helpers.clear
-local command = helpers.command
-local insert = helpers.insert
-local meths = helpers.meths
-local eq = helpers.eq
-local poke_eventloop = helpers.poke_eventloop
-local feed = helpers.feed
-local funcs = helpers.funcs
-local curwin = helpers.curwin
-local pcall_err = helpers.pcall_err
+
+local clear = n.clear
+local command = n.command
+local insert = n.insert
+local api = n.api
+local eq = t.eq
+local poke_eventloop = n.poke_eventloop
+local feed = n.feed
+local fn = n.fn
+local pcall_err = t.pcall_err
 
 describe('winbar', function()
   local screen
@@ -17,61 +18,61 @@ describe('winbar', function()
   before_each(function()
     clear()
     screen = Screen.new(60, 13)
-    screen:attach()
     screen:set_default_attr_ids({
-      [1] = {bold = true},
-      [2] = {reverse = true},
-      [3] = {bold = true, foreground = Screen.colors.Blue},
-      [4] = {bold = true, reverse = true},
-      [5] = {bold = true, foreground = Screen.colors.Red},
-      [6] = {foreground = Screen.colors.Blue},
-      [7] = {background = Screen.colors.LightGrey},
-      [8] = {background = Screen.colors.LightMagenta},
-      [9] = {bold = true, foreground = Screen.colors.Blue, background = Screen.colors.LightMagenta},
-      [10] = {background = Screen.colors.LightGrey, underline = true},
-      [11] = {background = Screen.colors.LightGrey, underline = true, bold = true, foreground = Screen.colors.Magenta},
+      [1] = { bold = true },
+      [2] = { reverse = true },
+      [3] = { bold = true, foreground = Screen.colors.Blue },
+      [4] = { bold = true, reverse = true },
+      [5] = { bold = true, foreground = Screen.colors.Red },
+      [6] = { foreground = Screen.colors.Blue },
+      [7] = { foreground = Screen.colors.Black, background = Screen.colors.LightGrey },
+      [8] = { background = Screen.colors.LightMagenta },
+      [9] = {
+        bold = true,
+        foreground = Screen.colors.Blue,
+        background = Screen.colors.LightMagenta,
+      },
+      [10] = { background = Screen.colors.LightGrey, underline = true },
+      [11] = {
+        background = Screen.colors.LightGrey,
+        underline = true,
+        bold = true,
+        foreground = Screen.colors.Magenta,
+      },
+      [12] = {
+        underline = true,
+        background = Screen.colors.Red,
+      },
+      [13] = {
+        underline = true,
+        bold = true,
+        foreground = Screen.colors.Blue,
+        background = Screen.colors.Red,
+      },
     })
-    meths.set_option('winbar', 'Set Up The Bars')
+    api.nvim_set_option_value('winbar', 'Set Up The Bars', {})
   end)
 
   it('works', function()
     screen:expect([[
       {1:Set Up The Bars                                             }|
       ^                                                            |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*10
                                                                   |
     ]])
     -- winbar is excluded from the heights returned by winheight() and getwininfo()
-    eq(11, funcs.winheight(0))
-    local win_info = funcs.getwininfo(curwin().id)[1]
+    eq(11, fn.winheight(0))
+    local win_info = fn.getwininfo(api.nvim_get_current_win())[1]
     eq(11, win_info.height)
     eq(1, win_info.winbar)
   end)
 
-  it('works with custom \'fillchars\' value', function()
+  it("works with custom 'fillchars' value", function()
     command('set fillchars=wbr:+')
     screen:expect([[
       {1:Set Up The Bars+++++++++++++++++++++++++++++++++++++++++++++}|
       ^                                                            |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*10
                                                                   |
     ]])
   end)
@@ -81,16 +82,7 @@ describe('winbar', function()
     screen:expect([[
       {5:Set Up The Bars                                             }|
       ^                                                            |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*10
                                                                   |
     ]])
   end)
@@ -114,22 +106,54 @@ describe('winbar', function()
       {2:[No Name]                     [No Name]                     }|
                                                                   |
     ]])
+    -- 'showcmdloc' "statusline" should not interfere with winbar redrawing #23030
+    command('set showcmd showcmdloc=statusline')
+    feed('<C-W>w')
+    feed('<C-W>')
+    screen:expect([[
+      {6:Set Up The Bars              }│{6:Set Up The Bars               }|
+                                   │                              |
+      {3:~                            }│{3:~                             }|
+      {3:~                            }│{2:[No Name]                     }|
+      {3:~                            }│{5:Set Up The Bars               }|
+      {3:~                            }│^                              |
+      {3:~                            }│{3:~                             }|
+      {3:~                            }│{4:[No Name]          ^W         }|
+      {3:~                            }│{6:Set Up The Bars               }|
+      {3:~                            }│                              |
+      {3:~                            }│{3:~                             }|
+      {2:[No Name]                     [No Name]                     }|
+                                                                  |
+    ]])
+    feed('w<C-W>W')
+    screen:expect([[
+      {6:Set Up The Bars              }│{6:Set Up The Bars               }|
+                                   │                              |
+      {3:~                            }│{3:~                             }|
+      {3:~                            }│{2:[No Name]                     }|
+      {3:~                            }│{5:Set Up The Bars               }|
+      {3:~                            }│^                              |
+      {3:~                            }│{3:~                             }|
+      {3:~                            }│{4:[No Name]                     }|
+      {3:~                            }│{6:Set Up The Bars               }|
+      {3:~                            }│                              |
+      {3:~                            }│{3:~                             }|
+      {2:[No Name]                     [No Name]                     }|
+                                                                  |
+    ]])
   end)
 
-  it('works when switching value of \'winbar\'', function()
+  it("works when switching value of 'winbar'", function()
     command('belowright vsplit | split | split | set winbar=')
     screen:expect([[
                                    │^                              |
-      {3:~                            }│{3:~                             }|
-      {3:~                            }│{3:~                             }|
+      {3:~                            }│{3:~                             }|*2
       {3:~                            }│{4:[No Name]                     }|
       {3:~                            }│                              |
-      {3:~                            }│{3:~                             }|
-      {3:~                            }│{3:~                             }|
+      {3:~                            }│{3:~                             }|*2
       {3:~                            }│{2:[No Name]                     }|
       {3:~                            }│                              |
-      {3:~                            }│{3:~                             }|
-      {3:~                            }│{3:~                             }|
+      {3:~                            }│{3:~                             }|*2
       {2:[No Name]                     [No Name]                     }|
                                                                   |
     ]])
@@ -167,58 +191,52 @@ describe('winbar', function()
     ]])
   end)
 
+  it('works with combined highlight attributes', function()
+    command('hi Winbar guibg=red gui=underline')
+    command('hi Identifier guifg=blue gui=bold')
+    command('set winbar=Lookatmy%#Identifier#highlights')
+    screen:expect([[
+      {12:Lookatmy}{13:highlights                                          }|
+      ^                                                            |
+      {3:~                                                           }|*10
+                                                                  |
+    ]])
+  end)
+
   it('can be ruler', function()
     insert [[
       just some
       random text]]
-    meths.set_option('winbar', 'Hello, I am a ruler: %l,%c')
-    screen:expect{grid=[[
+    api.nvim_set_option_value('winbar', 'Hello, I am a ruler: %l,%c', {})
+    screen:expect {
+      grid = [[
       {1:Hello, I am a ruler: 2,11                                   }|
       just some                                                   |
       random tex^t                                                 |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*9
                                                                   |
-    ]]}
+    ]],
+    }
     feed 'b'
-    screen:expect{grid=[[
+    screen:expect {
+      grid = [[
       {1:Hello, I am a ruler: 2,8                                    }|
       just some                                                   |
       random ^text                                                 |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*9
                                                                   |
-    ]]}
+    ]],
+    }
     feed 'k'
-    screen:expect{grid=[[
+    screen:expect {
+      grid = [[
       {1:Hello, I am a ruler: 1,8                                    }|
       just so^me                                                   |
       random text                                                 |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*9
                                                                   |
-    ]]}
+    ]],
+    }
   end)
 
   it('works with laststatus=3', function()
@@ -226,15 +244,7 @@ describe('winbar', function()
     screen:expect([[
       {1:Set Up The Bars                                             }|
       ^                                                            |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*9
       {4:[No Name]                                                   }|
                                                                   |
     ]])
@@ -260,14 +270,7 @@ describe('winbar', function()
       {10: }{11:4}{10: [No Name] }{1: [No Name] }{2:                                   }{10:X}|
       {1:Set Up The Bars                                             }|
       ^                                                            |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*8
       {4:[No Name]                                                   }|
                                                                   |
     ]])
@@ -284,7 +287,7 @@ describe('winbar', function()
       line sin(theta)
       line 8]])
 
-    meths.input_mouse('left', 'press', '', 0, 5, 1)
+    api.nvim_input_mouse('left', 'press', '', 0, 5, 1)
     screen:expect([[
       {1:Set Up The Bars                                             }|
       line 1                                                      |
@@ -295,14 +298,12 @@ describe('winbar', function()
       line i                                                      |
       line sin(theta)                                             |
       line 8                                                      |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*3
                                                                   |
     ]])
-    eq({5, 1}, meths.win_get_cursor(0))
+    eq({ 5, 1 }, api.nvim_win_get_cursor(0))
 
-    meths.input_mouse('left', 'drag', '', 0, 6, 2)
+    api.nvim_input_mouse('left', 'drag', '', 0, 6, 2)
     screen:expect([[
       {1:Set Up The Bars                                             }|
       line 1                                                      |
@@ -313,14 +314,12 @@ describe('winbar', function()
       {7:li}^ne i                                                      |
       line sin(theta)                                             |
       line 8                                                      |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*3
       {1:-- VISUAL --}                                                |
     ]])
-    eq({6, 2}, meths.win_get_cursor(0))
+    eq({ 6, 2 }, api.nvim_win_get_cursor(0))
 
-    meths.input_mouse('left', 'drag', '', 0, 1, 2)
+    api.nvim_input_mouse('left', 'drag', '', 0, 1, 2)
     screen:expect([[
       {1:Set Up The Bars                                             }|
       li^n{7:e 1}                                                      |
@@ -331,16 +330,14 @@ describe('winbar', function()
       line i                                                      |
       line sin(theta)                                             |
       line 8                                                      |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*3
       {1:-- VISUAL --}                                                |
     ]])
-    eq({1, 2}, meths.win_get_cursor(0))
+    eq({ 1, 2 }, api.nvim_win_get_cursor(0))
 
-    meths.input_mouse('left', 'drag', '', 0, 0, 2)
+    api.nvim_input_mouse('left', 'drag', '', 0, 0, 2)
     screen:expect_unchanged()
-    eq({1, 2}, meths.win_get_cursor(0))
+    eq({ 1, 2 }, api.nvim_win_get_cursor(0))
   end)
 
   it('dragging statusline with mouse works correctly', function()
@@ -348,92 +345,72 @@ describe('winbar', function()
     screen:expect([[
       {1:Set Up The Bars                                             }|
       ^                                                            |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*3
       {4:[No Name]                                                   }|
       {1:Set Up The Bars                                             }|
                                                                   |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*3
       {2:[No Name]                                                   }|
                                                                   |
     ]])
 
-    meths.input_mouse('left', 'press', '', 1, 5, 10)
+    api.nvim_input_mouse('left', 'press', '', 1, 5, 10)
     poke_eventloop()
-    meths.input_mouse('left', 'drag', '', 1, 6, 10)
+    api.nvim_input_mouse('left', 'drag', '', 1, 6, 10)
     screen:expect([[
       {1:Set Up The Bars                                             }|
       ^                                                            |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*4
       {4:[No Name]                                                   }|
       {1:Set Up The Bars                                             }|
                                                                   |
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*2
       {2:[No Name]                                                   }|
                                                                   |
     ]])
 
-    meths.input_mouse('left', 'drag', '', 1, 4, 10)
+    api.nvim_input_mouse('left', 'drag', '', 1, 4, 10)
     screen:expect([[
       {1:Set Up The Bars                                             }|
       ^                                                            |
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*2
       {4:[No Name]                                                   }|
       {1:Set Up The Bars                                             }|
                                                                   |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*4
       {2:[No Name]                                                   }|
                                                                   |
     ]])
 
-    meths.input_mouse('left', 'press', '', 1, 11, 10)
+    api.nvim_input_mouse('left', 'press', '', 1, 11, 10)
     poke_eventloop()
-    meths.input_mouse('left', 'drag', '', 1, 9, 10)
+    api.nvim_input_mouse('left', 'drag', '', 1, 9, 10)
     screen:expect([[
       {1:Set Up The Bars                                             }|
       ^                                                            |
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*2
       {4:[No Name]                                                   }|
       {1:Set Up The Bars                                             }|
                                                                   |
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*2
       {2:[No Name]                                                   }|
-                                                                  |
-                                                                  |
-                                                                  |
+                                                                  |*3
     ]])
-    eq(3, meths.get_option('cmdheight'))
+    eq(3, api.nvim_get_option_value('cmdheight', {}))
 
-    meths.input_mouse('left', 'drag', '', 1, 11, 10)
+    api.nvim_input_mouse('left', 'drag', '', 1, 11, 10)
     screen:expect([[
       {1:Set Up The Bars                                             }|
       ^                                                            |
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*2
       {4:[No Name]                                                   }|
       {1:Set Up The Bars                                             }|
                                                                   |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*4
       {2:[No Name]                                                   }|
                                                                   |
     ]])
-    eq(1, meths.get_option('cmdheight'))
+    eq(1, api.nvim_get_option_value('cmdheight', {}))
   end)
 
   it('properly equalizes window height for window-local value', function()
@@ -458,40 +435,34 @@ describe('winbar', function()
   end)
 
   it('requires window-local value for floating windows', function()
-    local win = meths.open_win(0, false, { relative = 'editor', row = 2, col = 10, height = 7,
-                                           width = 30 })
-    meths.set_option_value('winbar', 'bar', {})
-    screen:expect{grid=[[
+    local win = api.nvim_open_win(
+      0,
+      false,
+      { relative = 'editor', row = 2, col = 10, height = 7, width = 30 }
+    )
+    api.nvim_set_option_value('winbar', 'bar', {})
+    screen:expect {
+      grid = [[
       {1:bar                                                         }|
       ^                                                            |
       {3:~         }{8:                              }{3:                    }|
-      {3:~         }{9:~                             }{3:                    }|
-      {3:~         }{9:~                             }{3:                    }|
-      {3:~         }{9:~                             }{3:                    }|
-      {3:~         }{9:~                             }{3:                    }|
-      {3:~         }{9:~                             }{3:                    }|
-      {3:~         }{9:~                             }{3:                    }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~         }{9:~                             }{3:                    }|*6
+      {3:~                                                           }|*3
                                                                   |
-    ]]}
-    meths.set_option_value('winbar', 'floaty bar', { scope = 'local', win = win.id })
-    screen:expect{grid=[[
+    ]],
+    }
+    api.nvim_set_option_value('winbar', 'floaty bar', { scope = 'local', win = win })
+    screen:expect {
+      grid = [[
       {1:bar                                                         }|
       ^                                                            |
       {3:~         }{1:floaty bar                    }{3:                    }|
       {3:~         }{8:                              }{3:                    }|
-      {3:~         }{9:~                             }{3:                    }|
-      {3:~         }{9:~                             }{3:                    }|
-      {3:~         }{9:~                             }{3:                    }|
-      {3:~         }{9:~                             }{3:                    }|
-      {3:~         }{9:~                             }{3:                    }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~         }{9:~                             }{3:                    }|*5
+      {3:~                                                           }|*3
                                                                   |
-    ]]}
+    ]],
+    }
   end)
 
   it('works correctly when moving a split', function()
@@ -502,8 +473,7 @@ describe('winbar', function()
     screen:expect([[
       {1:foo                   }│                      |
       ^                      │{3:~                     }|
-      {3:~                     }│{3:~                     }|
-      {3:~                     }│{3:~                     }|
+      {3:~                     }│{3:~                     }|*2
       {4:[No Name]              }{2:[No Name]             }|
                                                    |
     ]])
@@ -512,8 +482,7 @@ describe('winbar', function()
     screen:expect([[
                             │{1:foo                   }|
       {3:~                     }│^                      |
-      {3:~                     }│{3:~                     }|
-      {3:~                     }│{3:~                     }|
+      {3:~                     }│{3:~                     }|*2
       {2:[No Name]              }{4:[No Name]             }|
                                                    |
     ]])
@@ -523,8 +492,7 @@ describe('winbar', function()
     screen:expect([[
       {1:foo                   }│^                      |
                             │{3:~                     }|
-      {3:~                     }│{3:~                     }|
-      {3:~                     }│{3:~                     }|
+      {3:~                     }│{3:~                     }|*2
       {2:[No Name]              }{4:[No Name]             }|
                                                    |
     ]])
@@ -536,14 +504,7 @@ describe('winbar', function()
       ^                                                            |
       {4:[No Name]                                                   }|
                                                                   |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*8
       {2:[No Name]                                                   }|
                                                                   |
     ]])
@@ -554,12 +515,7 @@ describe('winbar', function()
       {4:[No Name]                                                   }|
       {1:a                                                           }|
                                                                   |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {3:~                                                           }|*6
       {2:[No Name]                                                   }|
                                                                   |
     ]])
@@ -591,43 +547,27 @@ describe('local winbar with tabs', function()
   before_each(function()
     clear()
     screen = Screen.new(60, 10)
-    screen:attach()
-    screen:set_default_attr_ids({
-      [1] = {bold = true},
-      [2] = {reverse = true},
-      [3] = {bold = true, foreground = Screen.colors.Blue},
-      [4] = {underline = true, background = Screen.colors.LightGray}
-    })
-    meths.set_option_value('winbar', 'foo', { scope = 'local', win = 0 })
+    api.nvim_set_option_value('winbar', 'foo', { scope = 'local', win = 0 })
   end)
 
   it('works', function()
     command('tabnew')
     screen:expect([[
-      {4: [No Name] }{1: [No Name] }{2:                                     }{4:X}|
+      {24: [No Name] }{5: [No Name] }{2:                                     }{24:X}|
       ^                                                            |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {1:~                                                           }|*7
                                                                   |
     ]])
     command('tabnext')
-    screen:expect{grid=[[
-      {1: [No Name] }{4: [No Name] }{2:                                     }{4:X}|
-      {1:foo                                                         }|
+    screen:expect {
+      grid = [[
+      {5: [No Name] }{24: [No Name] }{2:                                     }{24:X}|
+      {5:foo                                                         }|
       ^                                                            |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {1:~                                                           }|*6
                                                                   |
-    ]]}
+    ]],
+    }
   end)
 
   it('can edit new empty buffer #19458', function()
@@ -635,46 +575,60 @@ describe('local winbar with tabs', function()
       some
       goofy
       text]]
-    screen:expect{grid=[[
-      {1:foo                                                         }|
+    screen:expect {
+      grid = [[
+      {5:foo                                                         }|
       some                                                        |
       goofy                                                       |
       tex^t                                                        |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {1:~                                                           }|*5
                                                                   |
-    ]]}
+    ]],
+    }
 
     -- this used to throw an E315 ml_get error
     command 'tabedit'
-    screen:expect{grid=[[
-      {4: + [No Name] }{1: [No Name] }{2:                                   }{4:X}|
+    screen:expect {
+      grid = [[
+      {24: + [No Name] }{5: [No Name] }{2:                                   }{24:X}|
       ^                                                            |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {1:~                                                           }|*7
                                                                   |
-    ]]}
+    ]],
+    }
 
     command 'tabprev'
-    screen:expect{grid=[[
-      {1: + [No Name] }{4: [No Name] }{2:                                   }{4:X}|
-      {1:foo                                                         }|
+    screen:expect {
+      grid = [[
+      {5: + [No Name] }{24: [No Name] }{2:                                   }{24:X}|
+      {5:foo                                                         }|
       some                                                        |
       goofy                                                       |
       tex^t                                                        |
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
-      {3:~                                                           }|
+      {1:~                                                           }|*4
                                                                   |
-    ]]}
+    ]],
+    }
   end)
+end)
+
+it('winbar works properly when redrawing is postponed #23534', function()
+  clear({
+    args = {
+      '-c',
+      'set laststatus=2 lazyredraw',
+      '-c',
+      'setlocal statusline=(statusline) winbar=(winbar)',
+      '-c',
+      'call nvim_input(":<Esc>")',
+    },
+  })
+  local screen = Screen.new(60, 6)
+  screen:expect([[
+    {5:(winbar)                                                    }|
+    ^                                                            |
+    {1:~                                                           }|*2
+    {3:(statusline)                                                }|
+                                                                |
+  ]])
 end)

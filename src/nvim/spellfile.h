@@ -1,13 +1,8 @@
-#ifndef NVIM_SPELLFILE_H
-#define NVIM_SPELLFILE_H
+#pragma once
 
-#include <stdbool.h>
-
-#include "nvim/ex_cmds_defs.h"
-#include "nvim/spell_defs.h"
-#include "nvim/types.h"
+#include "nvim/ex_cmds_defs.h"  // IWYU pragma: keep
+#include "nvim/spell_defs.h"  // IWYU pragma: keep
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "spellfile.h.generated.h"
 #endif
-#endif  // NVIM_SPELLFILE_H

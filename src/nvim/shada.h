@@ -1,7 +1,6 @@
-#ifndef NVIM_SHADA_H
-#define NVIM_SHADA_H
+#pragma once
 
-#include <msgpack.h>
+#include "nvim/api/private/defs.h"  // IWYU pragma: keep
 
 /// Flags for shada_read_file and children
 typedef enum {
@@ -15,4 +14,3 @@ typedef enum {
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "shada.h.generated.h"
 #endif
-#endif  // NVIM_SHADA_H

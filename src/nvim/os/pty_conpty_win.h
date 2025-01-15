@@ -1,5 +1,4 @@
-#ifndef NVIM_OS_PTY_CONPTY_WIN_H
-#define NVIM_OS_PTY_CONPTY_WIN_H
+#pragma once
 
 #include "klib/kvec.h"
 #include "nvim/os/input.h"
@@ -8,10 +7,10 @@
 # define HPCON VOID *
 #endif
 
-extern HRESULT (WINAPI *pCreatePseudoConsole)  // NOLINT(whitespace/parens)
+extern HRESULT(WINAPI *pCreatePseudoConsole)
   (COORD, HANDLE, HANDLE, DWORD, HPCON *);
-extern HRESULT (WINAPI *pResizePseudoConsole)(HPCON, COORD);
-extern void (WINAPI *pClosePseudoConsole)(HPCON);
+extern HRESULT(WINAPI *pResizePseudoConsole)(HPCON, COORD);
+extern void(WINAPI *pClosePseudoConsole)(HPCON);
 
 typedef struct conpty {
   HPCON pty;
@@ -21,5 +20,3 @@ typedef struct conpty {
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "os/pty_conpty_win.h.generated.h"
 #endif
-
-#endif  // NVIM_OS_PTY_CONPTY_WIN_H

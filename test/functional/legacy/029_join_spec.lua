@@ -1,12 +1,12 @@
 -- Test for joining lines with marks in them (and with 'joinspaces' set/reset)
 
-local helpers = require('test.functional.helpers')(after_each)
+local n = require('test.functional.testnvim')()
 
-local feed = helpers.feed
-local clear = helpers.clear
-local insert = helpers.insert
-local expect = helpers.expect
-local feed_command = helpers.feed_command
+local feed = n.feed
+local clear = n.clear
+local insert = n.insert
+local expect = n.expect
+local feed_command = n.feed_command
 
 describe('joining lines', function()
   before_each(clear)
@@ -313,7 +313,9 @@ describe('joining lines', function()
     feed('j')
     feed_command('.,+5join')
     feed('j6J<cr>')
-    feed('oSome code!<cr>// Make sure backspacing does not remove this comment leader.<esc>0i<bs><esc>')
+    feed(
+      'oSome code!<cr>// Make sure backspacing does not remove this comment leader.<esc>0i<bs><esc>'
+    )
 
     expect([[
       {

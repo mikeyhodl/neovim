@@ -1,17 +1,18 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
 
-local clear = helpers.clear
-local command = helpers.command
-local eq = helpers.eq
-local neq = helpers.neq
-local feed = helpers.feed
-local eval = helpers.eval
-local exec = helpers.exec
-local funcs = helpers.funcs
-local meths = helpers.meths
-local curwin = helpers.curwin
-local assert_alive = helpers.assert_alive
+local clear = n.clear
+local command = n.command
+local eq = t.eq
+local neq = t.neq
+local feed = n.feed
+local eval = n.eval
+local exec = n.exec
+local fn = n.fn
+local api = n.api
+local curwin = n.api.nvim_get_current_win
+local assert_alive = n.assert_alive
 
 describe('tabpage', function()
   before_each(clear)
@@ -58,7 +59,9 @@ describe('tabpage', function()
   end)
 
   it('no segfault with strange WinClosed autocommand #20290', function()
-    pcall(exec, [[
+    pcall(
+      exec,
+      [[
       set nohidden
       edit Xa
       split Xb
@@ -66,47 +69,42 @@ describe('tabpage', function()
       new
       autocmd WinClosed * tabprev | bwipe!
       close
-    ]])
+    ]]
+    )
     assert_alive()
   end)
 
   it('nvim_win_close and nvim_win_hide update tabline #20285', function()
-    eq(1, #meths.list_tabpages())
-    eq({1, 1}, funcs.win_screenpos(0))
-    local win1 = curwin().id
+    eq(1, #api.nvim_list_tabpages())
+    eq({ 1, 1 }, fn.win_screenpos(0))
+    local win1 = curwin()
 
     command('tabnew')
-    eq(2, #meths.list_tabpages())
-    eq({2, 1}, funcs.win_screenpos(0))
-    local win2 = curwin().id
+    eq(2, #api.nvim_list_tabpages())
+    eq({ 2, 1 }, fn.win_screenpos(0))
+    local win2 = curwin()
 
-    meths.win_close(win1, true)
-    eq(win2, curwin().id)
-    eq(1, #meths.list_tabpages())
-    eq({1, 1}, funcs.win_screenpos(0))
+    api.nvim_win_close(win1, true)
+    eq(win2, curwin())
+    eq(1, #api.nvim_list_tabpages())
+    eq({ 1, 1 }, fn.win_screenpos(0))
 
     command('tabnew')
-    eq(2, #meths.list_tabpages())
-    eq({2, 1}, funcs.win_screenpos(0))
-    local win3 = curwin().id
+    eq(2, #api.nvim_list_tabpages())
+    eq({ 2, 1 }, fn.win_screenpos(0))
+    local win3 = curwin()
 
-    meths.win_hide(win2)
-    eq(win3, curwin().id)
-    eq(1, #meths.list_tabpages())
-    eq({1, 1}, funcs.win_screenpos(0))
+    api.nvim_win_hide(win2)
+    eq(win3, curwin())
+    eq(1, #api.nvim_list_tabpages())
+    eq({ 1, 1 }, fn.win_screenpos(0))
   end)
 
   it('switching tabpage after setting laststatus=3 #19591', function()
     local screen = Screen.new(40, 8)
-    screen:set_default_attr_ids({
-      [0] = {bold = true, foreground = Screen.colors.Blue},
-      [1] = {bold = true, reverse = true},  -- StatusLine
-      [2] = {reverse = true},  -- TabLineFill
-      [3] = {bold = true}, -- TabLineSel
-      [4] = {background = Screen.colors.LightGrey, underline = true},  -- TabLine
-      [5] = {bold = true, foreground = Screen.colors.Magenta},
-    })
-    screen:attach()
+    screen:add_extra_attr_ids {
+      [100] = { bold = true, foreground = Screen.colors.Fuchsia },
+    }
 
     command('tabnew')
     command('tabprev')
@@ -114,39 +112,33 @@ describe('tabpage', function()
     command('tabnext')
     feed('<C-G>')
     screen:expect([[
-      {4: [No Name] }{3: [No Name] }{2:                 }{4:X}|
+      {24: [No Name] }{5: [No Name] }{2:                 }{24:X}|
       ^                                        |
-      {0:~                                       }|
-      {0:~                                       }|
-      {0:~                                       }|
-      {0:~                                       }|
-      {1:[No Name]                               }|
+      {1:~                                       }|*4
+      {3:[No Name]                               }|
       "[No Name]" --No lines in buffer--      |
     ]])
     command('vnew')
     screen:expect([[
-      {4: [No Name] }{3: }{5:2}{3: [No Name] }{2:               }{4:X}|
+      {24: [No Name] }{5: }{100:2}{5: [No Name] }{2:               }{24:X}|
       ^                    │                   |
-      {0:~                   }│{0:~                  }|
-      {0:~                   }│{0:~                  }|
-      {0:~                   }│{0:~                  }|
-      {0:~                   }│{0:~                  }|
-      {1:[No Name]                               }|
+      {1:~                   }│{1:~                  }|*4
+      {3:[No Name]                               }|
       "[No Name]" --No lines in buffer--      |
     ]])
   end)
 
-  it(":tabmove handles modifiers and addr", function()
+  it(':tabmove handles modifiers and addr', function()
     command('tabnew | tabnew | tabnew')
-    eq(4, funcs.nvim_tabpage_get_number(0))
+    eq(4, fn.nvim_tabpage_get_number(0))
     command('     silent      :keepalt   :: :::    silent!    -    tabmove')
-    eq(3, funcs.nvim_tabpage_get_number(0))
+    eq(3, fn.nvim_tabpage_get_number(0))
     command('     silent      :keepalt   :: :::    silent!    -2    tabmove')
-    eq(1, funcs.nvim_tabpage_get_number(0))
+    eq(1, fn.nvim_tabpage_get_number(0))
   end)
 
   it(':tabs does not overflow IObuff with long path with comma #20850', function()
-    meths.buf_set_name(0, ('x'):rep(1024) .. ',' .. ('x'):rep(1024))
+    api.nvim_buf_set_name(0, ('x'):rep(1024) .. ',' .. ('x'):rep(1024))
     command('tabs')
     assert_alive()
   end)

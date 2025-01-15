@@ -1,17 +1,16 @@
-local helpers = require('test.functional.helpers')(after_each)
+local n = require('test.functional.testnvim')()
 
-local clear = helpers.clear
-local exec_lua = helpers.exec_lua
+local clear = n.clear
+local exec_lua = n.exec_lua
 
 describe('treesitter perf', function()
-
   setup(function()
     clear()
   end)
 
   it('can handle large folds', function()
-    helpers.command'edit ./src/nvim/eval.c'
-    exec_lua[[
+    n.command 'edit ./src/nvim/eval.c'
+    exec_lua [[
       local parser = vim.treesitter.get_parser(0, "c", {})
       vim.treesitter.highlighter.new(parser)
 
@@ -37,7 +36,7 @@ describe('treesitter perf', function()
         return "qq" .. acc .. "q"
       end
 
-      local start = vim.loop.hrtime()
+      local start = vim.uv.hrtime()
       keys(mk_keys(10))
 
       for _ = 1, 100 do
@@ -45,9 +44,7 @@ describe('treesitter perf', function()
         vim.cmd'redraw!'
       end
 
-      return vim.loop.hrtime() - start
+      return vim.uv.hrtime() - start
     ]]
-
   end)
-
 end)

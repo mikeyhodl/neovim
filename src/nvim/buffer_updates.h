@@ -1,11 +1,11 @@
-#ifndef NVIM_BUFFER_UPDATES_H
-#define NVIM_BUFFER_UPDATES_H
+#pragma once
 
-#include "nvim/buffer_defs.h"  // for buf_T
-#include "nvim/extmark.h"      // for bcount_t
+#include <stdint.h>  // IWYU pragma: keep
+
+#include "nvim/buffer_defs.h"  // IWYU pragma: keep
+#include "nvim/extmark_defs.h"  // IWYU pragma: keep
+#include "nvim/pos_defs.h"  // IWYU pragma: keep
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "buffer_updates.h.generated.h"
 #endif
-
-#endif  // NVIM_BUFFER_UPDATES_H

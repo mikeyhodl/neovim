@@ -69,12 +69,12 @@ extern "C" {
 
 typedef struct s_mmfile {
 	char *ptr;
-	long size;
+	int size;
 } mmfile_t;
 
 typedef struct s_mmbuffer {
 	char *ptr;
-	long size;
+	int size;
 } mmbuffer_t;
 
 typedef struct s_xpparam {
@@ -102,8 +102,8 @@ typedef struct s_xdemitcb {
 
 typedef long (*find_func_t)(const char *line, long line_len, char *buffer, long buffer_size, void *priv);
 
-typedef int (*xdl_emit_hunk_consume_func_t)(long start_a, long count_a,
-					    long start_b, long count_b,
+typedef int (*xdl_emit_hunk_consume_func_t)(int start_a, int count_a,
+					    int start_b, int count_b,
 					    void *cb_data);
 
 typedef struct s_xdemitconf {

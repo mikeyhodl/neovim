@@ -1,6 +1,8 @@
-local helpers = require('test.functional.helpers')(after_each)
-local source, clear = helpers.source, helpers.clear
-local eq, nvim = helpers.eq, helpers.meths
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local source, clear = n.source, n.clear
+local eq, api = t.eq, n.api
 
 describe('undolevel', function()
   setup(clear)
@@ -57,6 +59,6 @@ describe('undolevel', function()
       call Test_global_local_undolevels()
     ]])
 
-    eq({}, nvim.get_vvar('errors'))
+    eq({}, api.nvim_get_vvar('errors'))
   end)
 end)

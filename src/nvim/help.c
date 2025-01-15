@@ -1,29 +1,51 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 // help.c: functions for Vim help
 
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
+#include "nvim/ascii_defs.h"
 #include "nvim/buffer.h"
+#include "nvim/buffer_defs.h"
+#include "nvim/change.h"
 #include "nvim/charset.h"
 #include "nvim/cmdexpand.h"
+#include "nvim/cmdexpand_defs.h"
+#include "nvim/errors.h"
 #include "nvim/ex_cmds.h"
+#include "nvim/ex_cmds_defs.h"
 #include "nvim/ex_docmd.h"
+#include "nvim/extmark_defs.h"
 #include "nvim/fileio.h"
 #include "nvim/garray.h"
+#include "nvim/garray_defs.h"
+#include "nvim/gettext_defs.h"
 #include "nvim/globals.h"
 #include "nvim/help.h"
+#include "nvim/macros_defs.h"
+#include "nvim/mark.h"
+#include "nvim/mbyte.h"
+#include "nvim/mbyte_defs.h"
+#include "nvim/memline.h"
 #include "nvim/memory.h"
+#include "nvim/message.h"
 #include "nvim/option.h"
+#include "nvim/option_defs.h"
+#include "nvim/option_vars.h"
 #include "nvim/optionstr.h"
+#include "nvim/os/fs.h"
 #include "nvim/os/input.h"
+#include "nvim/os/os.h"
+#include "nvim/os/os_defs.h"
 #include "nvim/path.h"
+#include "nvim/pos_defs.h"
+#include "nvim/runtime.h"
 #include "nvim/strings.h"
-#include "nvim/syntax.h"
 #include "nvim/tag.h"
-#include "nvim/vim.h"
+#include "nvim/types_defs.h"
+#include "nvim/vim_defs.h"
 #include "nvim/window.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
@@ -34,19 +56,12 @@
 void ex_help(exarg_T *eap)
 {
   char *arg;
-  char *tag;
   FILE *helpfd;          // file descriptor of help file
-  int n;
-  int i;
   win_T *wp;
   int num_matches;
   char **matches;
-  char *p;
   int empty_fnum = 0;
   int alt_fnum = 0;
-  buf_T *buf;
-  int len;
-  char *lang;
   const bool old_KeyTyped = KeyTyped;
 
   if (eap != NULL) {
@@ -75,13 +90,13 @@ void ex_help(exarg_T *eap)
   }
 
   // remove trailing blanks
-  p = arg + strlen(arg) - 1;
+  char *p = arg + strlen(arg) - 1;
   while (p > arg && ascii_iswhite(*p) && p[-1] != '\\') {
     *p-- = NUL;
   }
 
   // Check for a specified language
-  lang = check_help_lang(arg);
+  char *lang = check_help_lang(arg);
 
   // When no argument given go to the index.
   if (*arg == NUL) {
@@ -89,13 +104,13 @@ void ex_help(exarg_T *eap)
   }
 
   // Check if there is a match for the argument.
-  n = find_help_tags(arg, &num_matches, &matches, eap != NULL && eap->forceit);
+  int n = find_help_tags(arg, &num_matches, &matches, eap != NULL && eap->forceit);
 
-  i = 0;
+  int i = 0;
   if (n != FAIL && lang != NULL) {
     // Find first item with the requested language.
     for (i = 0; i < num_matches; i++) {
-      len = (int)strlen(matches[i]);
+      int len = (int)strlen(matches[i]);
       if (len > 3 && matches[i][len - 3] == '@'
           && STRICMP(matches[i] + len - 2, lang) == 0) {
         break;
@@ -115,7 +130,7 @@ void ex_help(exarg_T *eap)
   }
 
   // The first match (in the requested language) is the best match.
-  tag = xstrdup(matches[i]);
+  char *tag = xstrdup(matches[i]);
   FreeWild(num_matches, matches);
 
   // Re-use an existing help window or open a new one.
@@ -138,7 +153,7 @@ void ex_help(exarg_T *eap)
       // There is no help window yet.
       // Try to open the file specified by the "helpfile" option.
       if ((helpfd = os_fopen(p_hf, READBIN)) == NULL) {
-        smsg(_("Sorry, help file \"%s\" not found"), p_hf);
+        smsg(0, _("Sorry, help file \"%s\" not found"), p_hf);
         goto erret;
       }
       fclose(helpfd);
@@ -163,9 +178,9 @@ void ex_help(exarg_T *eap)
       // set b_p_ro flag).
       // Set the alternate file to the previously edited file.
       alt_fnum = curbuf->b_fnum;
-      (void)do_ecmd(0, NULL, NULL, NULL, ECMD_LASTL,
-                    ECMD_HIDE + ECMD_SET_HELP,
-                    NULL);  // buffer is still open, don't store info
+      do_ecmd(0, NULL, NULL, NULL, ECMD_LASTL,
+              ECMD_HIDE + ECMD_SET_HELP,
+              NULL);  // buffer is still open, don't store info
 
       if ((cmdmod.cmod_flags & CMOD_KEEPALT) == 0) {
         curwin->w_alt_fnum = alt_fnum;
@@ -186,7 +201,7 @@ void ex_help(exarg_T *eap)
   // may have jumped to another window, check that the buffer is not in a
   // window.
   if (empty_fnum != 0 && curbuf->b_fnum != empty_fnum) {
-    buf = buflist_findnr(empty_fnum);
+    buf_T *buf = buflist_findnr(empty_fnum);
     if (buf != NULL && buf->b_nwindows == 0) {
       wipe_buffer(buf, true);
     }
@@ -243,14 +258,11 @@ char *check_help_lang(char *arg)
 /// @param wrong_case  no matching case
 ///
 /// @return  a heuristic indicating how well the given string matches.
-int help_heuristic(char *matched_string, int offset, int wrong_case)
+int help_heuristic(char *matched_string, int offset, bool wrong_case)
   FUNC_ATTR_PURE
 {
-  int num_letters;
-  char *p;
-
-  num_letters = 0;
-  for (p = matched_string; *p; p++) {
+  int num_letters = 0;
+  for (char *p = matched_string; *p; p++) {
     if (ASCII_ISALNUM(*p)) {
       num_letters++;
     }
@@ -285,11 +297,8 @@ int help_heuristic(char *matched_string, int offset, int wrong_case)
 /// that has been put after the tagname by find_tags().
 static int help_compare(const void *s1, const void *s2)
 {
-  char *p1;
-  char *p2;
-
-  p1 = *(char **)s1 + strlen(*(char **)s1) + 1;
-  p2 = *(char **)s2 + strlen(*(char **)s2) + 1;
+  char *p1 = *(char **)s1 + strlen(*(char **)s1) + 1;
+  char *p2 = *(char **)s2 + strlen(*(char **)s2) + 1;
 
   // Compare by help heuristic number first.
   int cmp = strcmp(p1, p2);
@@ -307,8 +316,6 @@ static int help_compare(const void *s1, const void *s2)
 /// When "keep_lang" is true try keeping the language of the current buffer.
 int find_help_tags(const char *arg, int *num_matches, char ***matches, bool keep_lang)
 {
-  int i;
-
   // Specific tags that either have a specific replacement or won't go
   // through the generic rules.
   static char *(except_tbl[][2]) = {
@@ -359,14 +366,14 @@ int find_help_tags(const char *arg, int *num_matches, char ***matches, bool keep
     "!=?", "!~?", "<=?", "<?", "==?", "=~?",
     ">=?", ">?", "is?", "isnot?"
   };
-  char *d = (char *)IObuff;       // assume IObuff is long enough!
+  char *d = IObuff;       // assume IObuff is long enough!
   d[0] = NUL;
 
   if (STRNICMP(arg, "expr-", 5) == 0) {
     // When the string starting with "expr-" and containing '?' and matches
     // the table, it is taken literally (but ~ is escaped).  Otherwise '?'
     // is recognized as a wildcard.
-    for (i = (int)ARRAY_SIZE(expr_table); --i >= 0;) {
+    for (int i = (int)ARRAY_SIZE(expr_table); --i >= 0;) {
       if (strcmp(arg + 5, expr_table[i]) == 0) {
         for (int si = 0, di = 0;; si++) {
           if (arg[si] == '~') {
@@ -383,7 +390,7 @@ int find_help_tags(const char *arg, int *num_matches, char ***matches, bool keep
   } else {
     // Recognize a few exceptions to the rule.  Some strings that contain
     // '*'are changed to "star", otherwise '*' is recognized as a wildcard.
-    for (i = 0; except_tbl[i][0] != NULL; i++) {
+    for (int i = 0; except_tbl[i][0] != NULL; i++) {
       if (strcmp(arg, except_tbl[i][0]) == 0) {
         STRCPY(d, except_tbl[i][1]);
         break;
@@ -399,7 +406,7 @@ int find_help_tags(const char *arg, int *num_matches, char ***matches, bool keep
     // And also "\_$" and "\_^".
     if (arg[0] == '\\'
         && ((arg[1] != NUL && arg[2] == NUL)
-            || (vim_strchr("%_z@", arg[1]) != NULL
+            || (vim_strchr("%_z@", (uint8_t)arg[1]) != NULL
                 && arg[2] != NUL))) {
       vim_snprintf(d, IOSIZE, "/\\\\%s", arg + 1);
       // Check for "/\\_$", should be "/\\_\$"
@@ -456,9 +463,9 @@ int find_help_tags(const char *arg, int *num_matches, char ***matches, bool keep
         // Replace "^x" by "CTRL-X". Don't do this for "^_" to make
         // ":help i_^_CTRL-D" work.
         // Insert '-' before and after "CTRL-X" when applicable.
-        if (*s < ' '
+        if ((uint8_t)(*s) < ' '
             || (*s == '^' && s[1]
-                && (ASCII_ISALPHA(s[1]) || vim_strchr("?@[\\]^", s[1]) != NULL))) {
+                && (ASCII_ISALPHA(s[1]) || vim_strchr("?@[\\]^", (uint8_t)s[1]) != NULL))) {
           if (d > IObuff && d[-1] != '_' && d[-1] != '\\') {
             *d++ = '_';                 // prepend a '_' to make x_CTRL-x
           }
@@ -537,12 +544,12 @@ int find_help_tags(const char *arg, int *num_matches, char ***matches, bool keep
   if (keep_lang) {
     flags |= TAG_KEEP_LANG;
   }
-  if (find_tags((char *)IObuff, num_matches, matches, flags, MAXCOL, NULL) == OK
+  if (find_tags(IObuff, num_matches, matches, flags, MAXCOL, NULL) == OK
       && *num_matches > 0) {
     // Sort the matches found on the heuristic number that is after the
     // tag name.
     qsort((void *)(*matches), (size_t)(*num_matches),
-          sizeof(char_u *), help_compare);
+          sizeof(char *), help_compare);
     // Delete more than TAG_MANY to reduce the size of the listing.
     while (*num_matches > TAG_MANY) {
       xfree((*matches)[--*num_matches]);
@@ -557,7 +564,7 @@ int find_help_tags(const char *arg, int *num_matches, char ***matches, bool keep
 void cleanup_help_tags(int num_file, char **file)
 {
   char buf[4];
-  char_u *p = (char_u *)buf;
+  char *p = buf;
 
   if (p_hlg[0] != NUL && (p_hlg[0] != 'e' || p_hlg[1] != 'n')) {
     *p++ = '@';
@@ -578,7 +585,7 @@ void cleanup_help_tags(int num_file, char **file)
       for (j = 0; j < num_file; j++) {
         if (j != i
             && (int)strlen(file[j]) == len + 3
-            && STRNCMP(file[i], file[j], len + 1) == 0) {
+            && strncmp(file[i], file[j], (size_t)len + 1) == 0) {
           break;
         }
       }
@@ -607,7 +614,7 @@ void cleanup_help_tags(int num_file, char **file)
 void prepare_help_buffer(void)
 {
   curbuf->b_help = true;
-  set_string_option_direct("buftype", -1, "help", OPT_FREE|OPT_LOCAL, 0);
+  set_option_direct(kOptBuftype, STATIC_CSTR_AS_OPTVAL("help"), OPT_LOCAL, 0);
 
   // Always set these options after jumping to a help tag, because the
   // user may have an autocommand that gets in the way.
@@ -616,13 +623,13 @@ void prepare_help_buffer(void)
   // Only set it when needed, buf_init_chartab() is some work.
   char *p = "!-~,^*,^|,^\",192-255";
   if (strcmp(curbuf->b_p_isk, p) != 0) {
-    set_string_option_direct("isk", -1, p, OPT_FREE|OPT_LOCAL, 0);
+    set_option_direct(kOptIskeyword, CSTR_AS_OPTVAL(p), OPT_LOCAL, 0);
     check_buf_options(curbuf);
-    (void)buf_init_chartab(curbuf, false);
+    buf_init_chartab(curbuf, false);
   }
 
   // Don't use the global foldmethod.
-  set_string_option_direct("fdm", -1, "manual", OPT_FREE|OPT_LOCAL, 0);
+  set_option_direct(kOptFoldmethod, STATIC_CSTR_AS_OPTVAL("manual"), OPT_LOCAL, 0);
 
   curbuf->b_p_ts = 8;         // 'tabstop' is 8.
   curwin->w_p_list = false;   // No list mode.
@@ -641,49 +648,9 @@ void prepare_help_buffer(void)
   set_buflisted(false);
 }
 
-/// After reading a help file: May cleanup a help buffer when syntax
-/// highlighting is not used.
-void fix_help_buffer(void)
+/// After reading a help file: if help.txt, populate *local-additions*
+void get_local_additions(void)
 {
-  linenr_T lnum;
-  char *line;
-  bool in_example = false;
-
-  // Set filetype to "help".
-  if (strcmp(curbuf->b_p_ft, "help") != 0) {
-    curbuf->b_ro_locked++;
-    set_option_value_give_err("ft", 0L, "help", OPT_LOCAL);
-    curbuf->b_ro_locked--;
-  }
-
-  if (!syntax_present(curwin)) {
-    for (lnum = 1; lnum <= curbuf->b_ml.ml_line_count; lnum++) {
-      line = ml_get_buf(curbuf, lnum, false);
-      const size_t len = strlen(line);
-      if (in_example && len > 0 && !ascii_iswhite(line[0])) {
-        // End of example: non-white or '<' in first column.
-        if (line[0] == '<') {
-          // blank-out a '<' in the first column
-          line = ml_get_buf(curbuf, lnum, true);
-          line[0] = ' ';
-        }
-        in_example = false;
-      }
-      if (!in_example && len > 0) {
-        if (line[len - 1] == '>' && (len == 1 || line[len - 2] == ' ')) {
-          // blank-out a '>' in the last column (start of example)
-          line = ml_get_buf(curbuf, lnum, true);
-          line[len - 1] = ' ';
-          in_example = true;
-        } else if (line[len - 1] == '~') {
-          // blank-out a '~' at the end of line (header marker)
-          line = ml_get_buf(curbuf, lnum, true);
-          line[len - 1] = ' ';
-        }
-      }
-    }
-  }
-
   // In the "help.txt" and "help.abx" file, add the locally added help
   // files.  This uses the very first line in the help file.
   char *const fname = path_tail(curbuf->b_fname);
@@ -693,28 +660,28 @@ void fix_help_buffer(void)
           && ASCII_ISALPHA(fname[6])
           && TOLOWER_ASC(fname[7]) == 'x'
           && fname[8] == NUL)) {
-    for (lnum = 1; lnum < curbuf->b_ml.ml_line_count; lnum++) {
-      line = ml_get_buf(curbuf, lnum, false);
+    for (linenr_T lnum = 1; lnum < curbuf->b_ml.ml_line_count; lnum++) {
+      char *line = ml_get_buf(curbuf, lnum);
       if (strstr(line, "*local-additions*") == NULL) {
         continue;
       }
+
+      int lnum_start = lnum;
 
       // Go through all directories in 'runtimepath', skipping
       // $VIMRUNTIME.
       char *p = p_rtp;
       while (*p != NUL) {
-        copy_option_part(&p, (char *)NameBuff, MAXPATHL, ",");
+        copy_option_part(&p, NameBuff, MAXPATHL, ",");
         char *const rt = vim_getenv("VIMRUNTIME");
         if (rt != NULL
-            && path_full_compare(rt, (char *)NameBuff, false, true) != kEqualFiles) {
+            && path_full_compare(rt, NameBuff, false, true) != kEqualFiles) {
           int fcount;
           char **fnames;
-          char *s;
           vimconv_T vc;
-          char *cp;
 
           // Find all "doc/ *.txt" files in this directory.
-          if (!add_pathsep((char *)NameBuff)
+          if (!add_pathsep(NameBuff)
               || xstrlcat(NameBuff, "doc/*.??[tx]",  // NOLINT
                           sizeof(NameBuff)) >= MAXPATHL) {
             emsg(_(e_fnametoolong));
@@ -723,33 +690,36 @@ void fix_help_buffer(void)
 
           // Note: We cannot just do `&NameBuff` because it is a statically sized array
           //       so `NameBuff == &NameBuff` according to C semantics.
-          char *buff_list[1] = { (char *)NameBuff };
+          char *buff_list[1] = { NameBuff };
           if (gen_expand_wildcards(1, buff_list, &fcount,
                                    &fnames, EW_FILE|EW_SILENT) == OK
               && fcount > 0) {
+            char *s;
+            char *cp;
             // If foo.abx is found use it instead of foo.txt in
             // the same directory.
             for (int i1 = 0; i1 < fcount; i1++) {
-              for (int i2 = 0; i2 < fcount; i2++) {
-                if (i1 == i2) {
-                  continue;
-                }
-                if (fnames[i1] == NULL || fnames[i2] == NULL) {
-                  continue;
-                }
-                const char *const f1 = fnames[i1];
+              const char *const f1 = fnames[i1];
+              const char *const t1 = path_tail(f1);
+              const char *const e1 = strrchr(t1, '.');
+              if (e1 == NULL) {
+                continue;
+              }
+              if (path_fnamecmp(e1, ".txt") != 0
+                  && path_fnamecmp(e1, fname + 4) != 0) {
+                // Not .txt and not .abx, remove it.
+                XFREE_CLEAR(fnames[i1]);
+                continue;
+              }
+
+              for (int i2 = i1 + 1; i2 < fcount; i2++) {
                 const char *const f2 = fnames[i2];
-                const char *const t1 = path_tail(f1);
-                const char *const t2 = path_tail(f2);
-                const char *const e1 = strrchr(t1, '.');
-                const char *const e2 = strrchr(t2, '.');
-                if (e1 == NULL || e2 == NULL) {
+                if (f2 == NULL) {
                   continue;
                 }
-                if (path_fnamecmp(e1, ".txt") != 0
-                    && path_fnamecmp(e1, fname + 4) != 0) {
-                  // Not .txt and not .abx, remove it.
-                  XFREE_CLEAR(fnames[i1]);
+                const char *const t2 = path_tail(f2);
+                const char *const e2 = strrchr(t2, '.');
+                if (e2 == NULL) {
                   continue;
                 }
                 if (e1 - f1 != e2 - f2
@@ -772,9 +742,9 @@ void fix_help_buffer(void)
               if (fd == NULL) {
                 continue;
               }
-              vim_fgets((char_u *)IObuff, IOSIZE, fd);
+              vim_fgets(IObuff, IOSIZE, fd);
               if (IObuff[0] == '*'
-                  && (s = vim_strchr((char *)IObuff + 1, '*'))
+                  && (s = vim_strchr(IObuff + 1, '*'))
                   != NULL) {
                 TriState this_utf = kNone;
                 // Change tag definition to a
@@ -788,7 +758,7 @@ void fix_help_buffer(void)
                   // The text is utf-8 when a byte
                   // above 127 is found and no
                   // illegal byte sequence is found.
-                  if ((char_u)(*s) >= 0x80 && this_utf != kFalse) {
+                  if ((uint8_t)(*s) >= 0x80 && this_utf != kFalse) {
                     this_utf = kTrue;
                     const int l = utf_ptr2len(s);
                     if (l == 1) {
@@ -807,18 +777,18 @@ void fix_help_buffer(void)
                               p_enc);
                 if (vc.vc_type == CONV_NONE) {
                   // No conversion needed.
-                  cp = (char *)IObuff;
+                  cp = IObuff;
                 } else {
                   // Do the conversion.  If it fails
                   // use the unconverted text.
-                  cp = string_convert(&vc, (char *)IObuff, NULL);
+                  cp = string_convert(&vc, IObuff, NULL);
                   if (cp == NULL) {
-                    cp = (char *)IObuff;
+                    cp = IObuff;
                   }
                 }
                 convert_setup(&vc, NULL, NULL);
 
-                ml_append(lnum, cp, (colnr_T)0, false);
+                ml_append(lnum, cp, 0, false);
                 if (cp != IObuff) {
                   xfree(cp);
                 }
@@ -830,6 +800,11 @@ void fix_help_buffer(void)
           }
         }
         xfree(rt);
+      }
+      linenr_T appended = lnum - lnum_start;
+      if (appended) {
+        mark_adjust(lnum_start + 1, (linenr_T)MAXLNUM, appended, 0, kExtmarkUndo);
+        changed_lines_redraw_buf(curbuf, lnum_start + 1, lnum_start + 1, appended);
       }
       break;
     }
@@ -863,13 +838,12 @@ static void helptags_one(char *dir, const char *ext, const char *tagfname, bool 
   garray_T ga;
   int filecount;
   char **files;
-  char *p1, *p2;
   char *s;
   TriState utf8 = kNone;
   bool mix = false;             // detected mixed encodings
 
   // Find all *.txt files.
-  size_t dirlen = STRLCPY(NameBuff, dir, sizeof(NameBuff));
+  size_t dirlen = xstrlcpy(NameBuff, dir, sizeof(NameBuff));
   if (dirlen >= MAXPATHL
       || xstrlcat(NameBuff, "/**/*", sizeof(NameBuff)) >= MAXPATHL  // NOLINT
       || xstrlcat(NameBuff, ext, sizeof(NameBuff)) >= MAXPATHL) {
@@ -879,7 +853,7 @@ static void helptags_one(char *dir, const char *ext, const char *tagfname, bool 
 
   // Note: We cannot just do `&NameBuff` because it is a statically sized array
   //       so `NameBuff == &NameBuff` according to C semantics.
-  char *buff_list[1] = { (char *)NameBuff };
+  char *buff_list[1] = { NameBuff };
   const int res = gen_expand_wildcards(1, buff_list, &filecount, &files,
                                        EW_FILE|EW_SILENT);
   if (res == FAIL || filecount == 0) {
@@ -895,13 +869,13 @@ static void helptags_one(char *dir, const char *ext, const char *tagfname, bool 
   // Open the tags file for writing.
   // Do this before scanning through all the files.
   memcpy(NameBuff, dir, dirlen + 1);
-  if (!add_pathsep((char *)NameBuff)
+  if (!add_pathsep(NameBuff)
       || xstrlcat(NameBuff, tagfname, sizeof(NameBuff)) >= MAXPATHL) {
     emsg(_(e_fnametoolong));
     return;
   }
 
-  FILE *const fd_tags = os_fopen((char *)NameBuff, "w");
+  FILE *const fd_tags = os_fopen(NameBuff, "w");
   if (fd_tags == NULL) {
     if (!ignore_writeerr) {
       semsg(_("E152: Cannot open %s for writing"), NameBuff);
@@ -912,7 +886,7 @@ static void helptags_one(char *dir, const char *ext, const char *tagfname, bool 
 
   // If using the "++t" argument or generating tags for "$VIMRUNTIME/doc"
   // add the "help-tags" tag.
-  ga_init(&ga, (int)sizeof(char_u *), 100);
+  ga_init(&ga, (int)sizeof(char *), 100);
   if (add_help_tags
       || path_full_compare("$VIMRUNTIME/doc", dir, false, true) == kEqualFiles) {
     size_t s_len = 18 + strlen(tagfname);
@@ -930,13 +904,14 @@ static void helptags_one(char *dir, const char *ext, const char *tagfname, bool 
     }
     const char *const fname = files[fi] + dirlen + 1;
 
+    bool in_example = false;
     bool firstline = true;
-    while (!vim_fgets((char_u *)IObuff, IOSIZE, fd) && !got_int) {
+    while (!vim_fgets(IObuff, IOSIZE, fd) && !got_int) {
       if (firstline) {
         // Detect utf-8 file by a non-ASCII char in the first line.
         TriState this_utf8 = kNone;
-        for (s = (char *)IObuff; *s != NUL; s++) {
-          if ((char_u)(*s) >= 0x80) {
+        for (s = IObuff; *s != NUL; s++) {
+          if ((uint8_t)(*s) >= 0x80) {
             this_utf8 = kTrue;
             const int l = utf_ptr2len(s);
             if (l == 1) {
@@ -960,9 +935,16 @@ static void helptags_one(char *dir, const char *ext, const char *tagfname, bool 
         }
         firstline = false;
       }
-      p1 = vim_strchr((char *)IObuff, '*');       // find first '*'
+      if (in_example) {
+        // skip over example; a non-white in the first column ends it
+        if (vim_strchr(" \t\n\r", (uint8_t)IObuff[0])) {
+          continue;
+        }
+        in_example = false;
+      }
+      char *p1 = vim_strchr(IObuff, '*');       // find first '*'
       while (p1 != NULL) {
-        p2 = strchr((const char *)p1 + 1, '*');  // Find second '*'.
+        char *p2 = strchr(p1 + 1, '*');  // Find second '*'.
         if (p2 != NULL && p2 > p1 + 1) {         // Skip "*" and "**".
           for (s = p1 + 1; s < p2; s++) {
             if (*s == ' ' || *s == '\t' || *s == '|') {
@@ -975,11 +957,11 @@ static void helptags_one(char *dir, const char *ext, const char *tagfname, bool 
           // followed by a white character or end-of-line.
           if (s == p2
               && (p1 == IObuff || p1[-1] == ' ' || p1[-1] == '\t')
-              && (vim_strchr(" \t\n\r", s[1]) != NULL
-                  || s[1] == '\0')) {
-            *p2 = '\0';
+              && (vim_strchr(" \t\n\r", (uint8_t)s[1]) != NULL
+                  || s[1] == NUL)) {
+            *p2 = NUL;
             p1++;
-            size_t s_len= (size_t)(p2 - p1) + strlen(fname) + 2;
+            size_t s_len = (size_t)(p2 - p1) + strlen(fname) + 2;
             s = xmalloc(s_len);
             GA_APPEND(char *, &ga, s);
             snprintf(s, s_len, "%s\t%s", p1, fname);
@@ -989,6 +971,11 @@ static void helptags_one(char *dir, const char *ext, const char *tagfname, bool 
           }
         }
         p1 = p2;
+      }
+      size_t len = strlen(IObuff);
+      if ((len == 2 && strcmp(&IObuff[len - 2], ">\n") == 0)
+          || (len >= 3 && strcmp(&IObuff[len - 3], " >\n") == 0)) {
+        in_example = true;
       }
       line_breakcheck();
     }
@@ -1004,15 +991,15 @@ static void helptags_one(char *dir, const char *ext, const char *tagfname, bool 
 
     // Check for duplicates.
     for (int i = 1; i < ga.ga_len; i++) {
-      p1 = ((char **)ga.ga_data)[i - 1];
-      p2 = ((char **)ga.ga_data)[i];
+      char *p1 = ((char **)ga.ga_data)[i - 1];
+      char *p2 = ((char **)ga.ga_data)[i];
       while (*p1 == *p2) {
         if (*p2 == '\t') {
           *p2 = NUL;
-          vim_snprintf((char *)NameBuff, MAXPATHL,
+          vim_snprintf(NameBuff, MAXPATHL,
                        _("E154: Duplicate tag \"%s\" in file %s/%s"),
-                       ((char_u **)ga.ga_data)[i], dir, p2 + 1);
-          emsg((char *)NameBuff);
+                       ((char **)ga.ga_data)[i], dir, p2 + 1);
+          emsg(NameBuff);
           *p2 = '\t';
           break;
         }
@@ -1028,12 +1015,12 @@ static void helptags_one(char *dir, const char *ext, const char *tagfname, bool 
     // Write the tags into the file.
     for (int i = 0; i < ga.ga_len; i++) {
       s = ((char **)ga.ga_data)[i];
-      if (STRNCMP(s, "help-tags\t", 10) == 0) {
+      if (strncmp(s, "help-tags\t", 10) == 0) {
         // help-tags entry was added in formatted form
         fputs(s, fd_tags);
       } else {
         fprintf(fd_tags, "%s\t/" "*", s);
-        for (p1 = s; *p1 != '\t'; p1++) {
+        for (char *p1 = s; *p1 != '\t'; p1++) {
           // insert backslash before '\\' and '/'
           if (*p1 == '\\' || *p1 == '/') {
             putc('\\', fd_tags);
@@ -1056,7 +1043,6 @@ static void helptags_one(char *dir, const char *ext, const char *tagfname, bool 
 static void do_helptags(char *dirname, bool add_help_tags, bool ignore_writeerr)
   FUNC_ATTR_NONNULL_ALL
 {
-  int len;
   garray_T ga;
   char lang[2];
   char ext[5];
@@ -1065,8 +1051,8 @@ static void do_helptags(char *dirname, bool add_help_tags, bool ignore_writeerr)
   char **files;
 
   // Get a list of all files in the help directory and in subdirectories.
-  STRLCPY(NameBuff, dirname, sizeof(NameBuff));
-  if (!add_pathsep((char *)NameBuff)
+  xstrlcpy(NameBuff, dirname, sizeof(NameBuff));
+  if (!add_pathsep(NameBuff)
       || xstrlcat(NameBuff, "**", sizeof(NameBuff)) >= MAXPATHL) {
     emsg(_(e_fnametoolong));
     return;
@@ -1074,7 +1060,7 @@ static void do_helptags(char *dirname, bool add_help_tags, bool ignore_writeerr)
 
   // Note: We cannot just do `&NameBuff` because it is a statically sized array
   //       so `NameBuff == &NameBuff` according to C semantics.
-  char *buff_list[1] = { (char *)NameBuff };
+  char *buff_list[1] = { NameBuff };
   if (gen_expand_wildcards(1, buff_list, &filecount, &files,
                            EW_FILE|EW_SILENT) == FAIL
       || filecount == 0) {
@@ -1087,7 +1073,7 @@ static void do_helptags(char *dirname, bool add_help_tags, bool ignore_writeerr)
   int j;
   ga_init(&ga, 1, 10);
   for (int i = 0; i < filecount; i++) {
-    len = (int)strlen(files[i]);
+    int len = (int)strlen(files[i]);
     if (len <= 4) {
       continue;
     }
@@ -1109,7 +1095,7 @@ static void do_helptags(char *dirname, bool add_help_tags, bool ignore_writeerr)
 
     // Did we find this language already?
     for (j = 0; j < ga.ga_len; j += 2) {
-      if (STRNCMP(lang, ((char_u *)ga.ga_data) + j, 2) == 0) {
+      if (strncmp(lang, ((char *)ga.ga_data) + j, 2) == 0) {
         break;
       }
     }
@@ -1136,38 +1122,45 @@ static void do_helptags(char *dirname, bool add_help_tags, bool ignore_writeerr)
       ext[1] = fname[5];
       ext[2] = fname[6];
     }
-    helptags_one(dirname, (char *)ext, (char *)fname, add_help_tags, ignore_writeerr);
+    helptags_one(dirname, ext, fname, add_help_tags, ignore_writeerr);
   }
 
   ga_clear(&ga);
   FreeWild(filecount, files);
 }
 
-static void helptags_cb(char *fname, void *cookie)
+static bool helptags_cb(int num_fnames, char **fnames, bool all, void *cookie)
   FUNC_ATTR_NONNULL_ALL
 {
-  do_helptags(fname, *(bool *)cookie, true);
+  for (int i = 0; i < num_fnames; i++) {
+    do_helptags(fnames[i], *(bool *)cookie, true);
+    if (!all) {
+      return true;
+    }
+  }
+
+  return num_fnames > 0;
 }
 
 /// ":helptags"
 void ex_helptags(exarg_T *eap)
 {
   expand_T xpc;
-  char *dirname;
   bool add_help_tags = false;
 
   // Check for ":helptags ++t {dir}".
-  if (STRNCMP(eap->arg, "++t", 3) == 0 && ascii_iswhite(eap->arg[3])) {
+  if (strncmp(eap->arg, "++t", 3) == 0 && ascii_iswhite(eap->arg[3])) {
     add_help_tags = true;
     eap->arg = skipwhite(eap->arg + 3);
   }
 
   if (strcmp(eap->arg, "ALL") == 0) {
-    do_in_path(p_rtp, "doc", DIP_ALL + DIP_DIR, helptags_cb, &add_help_tags);
+    do_in_path(p_rtp, "", "doc", DIP_ALL + DIP_DIR, helptags_cb, &add_help_tags);
   } else {
     ExpandInit(&xpc);
     xpc.xp_context = EXPAND_DIRECTORIES;
-    dirname = ExpandOne(&xpc, eap->arg, NULL, WILD_LIST_NOTFOUND|WILD_SILENT, WILD_EXPAND_FREE);
+    char *dirname =
+      ExpandOne(&xpc, eap->arg, NULL, WILD_LIST_NOTFOUND|WILD_SILENT, WILD_EXPAND_FREE);
     if (dirname == NULL || !os_isdir(dirname)) {
       semsg(_("E150: Not a directory: %s"), eap->arg);
     } else {

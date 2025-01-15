@@ -1,12 +1,14 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear = helpers.clear
-local command = helpers.command
-local eq = helpers.eq
-local eval = helpers.eval
-local feed = helpers.feed
-local nvim = helpers.nvim
-local testprg = helpers.testprg
-local retry = helpers.retry
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear = n.clear
+local command = n.command
+local eq = t.eq
+local eval = n.eval
+local feed = n.feed
+local api = n.api
+local testprg = n.testprg
+local retry = t.retry
 
 describe(':ls', function()
   before_each(function()
@@ -14,7 +16,7 @@ describe(':ls', function()
   end)
 
   it('R, F for :terminal buffers', function()
-    nvim('set_option', 'shell', string.format('"%s" INTERACT', testprg('shell-test')))
+    api.nvim_set_option_value('shell', string.format('"%s" INTERACT', testprg('shell-test')), {})
 
     command('edit foo')
     command('set hidden')
@@ -44,6 +46,4 @@ describe(':ls', function()
       eq('\n  3 %aF ', string.match(ls_output, '^\n *3 ... '))
     end)
   end)
-
 end)
-

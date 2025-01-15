@@ -1,23 +1,22 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
 
-local eq = helpers.eq
-local feed = helpers.feed
-local meths = helpers.meths
-local clear = helpers.clear
-local source = helpers.source
-local command = helpers.command
-local exc_exec = helpers.exc_exec
-local pcall_err = helpers.pcall_err
-local async_meths = helpers.async_meths
-local NIL = helpers.NIL
+local eq = t.eq
+local feed = n.feed
+local api = n.api
+local clear = n.clear
+local source = n.source
+local command = n.command
+local exc_exec = n.exc_exec
+local async_meths = n.async_meths
+local NIL = vim.NIL
 
 local screen
 
 before_each(function()
   clear()
   screen = Screen.new(25, 5)
-  screen:attach()
   source([[
     hi Test ctermfg=Red guifg=Red term=bold
     function CustomCompl(...)
@@ -55,14 +54,14 @@ before_each(function()
     endfunction
   ]])
   screen:set_default_attr_ids({
-    EOB={bold = true, foreground = Screen.colors.Blue1},
-    T={foreground=Screen.colors.Red},
-    RBP1={background=Screen.colors.Red},
-    RBP2={background=Screen.colors.Yellow},
-    RBP3={background=Screen.colors.Green},
-    RBP4={background=Screen.colors.Blue},
-    SEP={bold = true, reverse = true},
-    CONFIRM={bold = true, foreground = Screen.colors.SeaGreen4},
+    EOB = { bold = true, foreground = Screen.colors.Blue1 },
+    T = { foreground = Screen.colors.Red },
+    RBP1 = { background = Screen.colors.Red },
+    RBP2 = { background = Screen.colors.Yellow },
+    RBP3 = { background = Screen.colors.Green },
+    RBP4 = { background = Screen.colors.Blue },
+    SEP = { bold = true, reverse = true },
+    CONFIRM = { bold = true, foreground = Screen.colors.SeaGreen4 },
   })
 end)
 
@@ -89,9 +88,7 @@ describe('input()', function()
     command('redraw!')
     screen:expect([[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:Foo}^                      |
     ]])
   end)
@@ -100,144 +97,125 @@ describe('input()', function()
     feed([[:call input(1, 2)<CR>]])
     screen:expect([[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:1}2^                       |
     ]])
     feed('<BS>')
     screen:expect([[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:1}^                        |
     ]])
   end)
-  it('allows unequal numeric values when using {opts} dictionary', function()
+  it('allows unequal numeric values when using {opts} dict', function()
     command('echohl Test')
-    meths.set_var('opts', {prompt=1, default=2, cancelreturn=3})
+    api.nvim_set_var('opts', { prompt = 1, default = 2, cancelreturn = 3 })
     feed([[:echo input(opts)<CR>]])
     screen:expect([[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:1}2^                       |
     ]])
     feed('<BS>')
     screen:expect([[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:1}^                        |
     ]])
     feed('<Esc>')
     screen:expect([[
       ^                         |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:3}                        |
     ]])
   end)
   it('works with redraw', function()
     command('echohl Test')
-    meths.set_var('opts', {prompt='Foo>', default='Bar'})
+    api.nvim_set_var('opts', { prompt = 'Foo>', default = 'Bar' })
     feed([[:echo inputdialog(opts)<CR>]])
     screen:expect([[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:Foo>}Bar^                  |
     ]])
     command('mode')
-    screen:expect{grid=[[
+    screen:expect {
+      grid = [[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:Foo>}Bar^                  |
-    ]], reset=true}
+    ]],
+      reset = true,
+    }
     feed('<BS>')
     screen:expect([[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:Foo>}Ba^                   |
     ]])
     command('mode')
-    screen:expect{grid=[[
+    screen:expect {
+      grid = [[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:Foo>}Ba^                   |
-    ]], reset=true}
+    ]],
+      reset = true,
+    }
   end)
-  it('allows omitting everything with dictionary argument', function()
+  it('allows omitting everything with dict argument', function()
     command('echohl Test')
     feed([[:call input({})<CR>]])
     screen:expect([[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       ^                         |
     ]])
   end)
   it('supports completion', function()
     feed(':let var = input("", "", "custom,CustomCompl")<CR>')
     feed('<Tab><CR>')
-    eq('TEST', meths.get_var('var'))
+    eq('TEST', api.nvim_get_var('var'))
 
     feed(':let var = input({"completion": "customlist,CustomListCompl"})<CR>')
     feed('<Tab><CR>')
-    eq('FOO', meths.get_var('var'))
+    eq('FOO', api.nvim_get_var('var'))
   end)
   it('supports cancelreturn', function()
     feed(':let var = input({"cancelreturn": "BAR"})<CR>')
     feed('<Esc>')
-    eq('BAR', meths.get_var('var'))
+    eq('BAR', api.nvim_get_var('var'))
     feed(':let var = input({"cancelreturn": []})<CR>')
     feed('<Esc>')
-    eq({}, meths.get_var('var'))
+    eq({}, api.nvim_get_var('var'))
     feed(':let var = input({"cancelreturn": v:false})<CR>')
     feed('<Esc>')
-    eq(false, meths.get_var('var'))
+    eq(false, api.nvim_get_var('var'))
     feed(':let var = input({"cancelreturn": v:null})<CR>')
     feed('<Esc>')
-    eq(NIL, meths.get_var('var'))
+    eq(NIL, api.nvim_get_var('var'))
   end)
   it('supports default string', function()
     feed(':let var = input("", "DEF1")<CR>')
     feed('<CR>')
-    eq('DEF1', meths.get_var('var'))
+    eq('DEF1', api.nvim_get_var('var'))
 
     feed(':let var = input({"default": "DEF2"})<CR>')
     feed('<CR>')
-    eq('DEF2', meths.get_var('var'))
+    eq('DEF2', api.nvim_get_var('var'))
   end)
   it('errors out on invalid inputs', function()
-    eq('Vim(call):E730: using List as a String',
-       exc_exec('call input([])'))
-    eq('Vim(call):E730: using List as a String',
-       exc_exec('call input("", [])'))
-    eq('Vim(call):E730: using List as a String',
-       exc_exec('call input("", "", [])'))
-    eq('Vim(call):E730: using List as a String',
-       exc_exec('call input({"prompt": []})'))
-    eq('Vim(call):E730: using List as a String',
-       exc_exec('call input({"default": []})'))
-    eq('Vim(call):E730: using List as a String',
-       exc_exec('call input({"completion": []})'))
-    eq('Vim(call):E5050: {opts} must be the only argument',
-       exc_exec('call input({}, "default")'))
-    eq('Vim(call):E118: Too many arguments for function: input',
-       exc_exec('call input("prompt> ", "default", "file", "extra")'))
+    eq('Vim(call):E730: Using a List as a String', exc_exec('call input([])'))
+    eq('Vim(call):E730: Using a List as a String', exc_exec('call input("", [])'))
+    eq('Vim(call):E730: Using a List as a String', exc_exec('call input("", "", [])'))
+    eq('Vim(call):E730: Using a List as a String', exc_exec('call input({"prompt": []})'))
+    eq('Vim(call):E730: Using a List as a String', exc_exec('call input({"default": []})'))
+    eq('Vim(call):E730: Using a List as a String', exc_exec('call input({"completion": []})'))
+    eq('Vim(call):E5050: {opts} must be the only argument', exc_exec('call input({}, "default")'))
+    eq(
+      'Vim(call):E118: Too many arguments for function: input',
+      exc_exec('call input("prompt> ", "default", "file", "extra")')
+    )
   end)
   it('supports highlighting', function()
     command('nnoremap <expr> X input({"highlight": "RainBowParens"})[-1]')
@@ -245,9 +223,7 @@ describe('input()', function()
     feed('(())')
     screen:expect([[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {RBP1:(}{RBP2:()}{RBP1:)}^                     |
     ]])
   end)
@@ -294,9 +270,7 @@ describe('inputdialog()', function()
     command('redraw!')
     screen:expect([[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:Foo}^                      |
     ]])
   end)
@@ -305,135 +279,119 @@ describe('inputdialog()', function()
     feed([[:call inputdialog(1, 2)<CR>]])
     screen:expect([[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:1}2^                       |
     ]])
     feed('<BS>')
     screen:expect([[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:1}^                        |
     ]])
   end)
-  it('allows unequal numeric values when using {opts} dictionary', function()
+  it('allows unequal numeric values when using {opts} dict', function()
     command('echohl Test')
-    meths.set_var('opts', {prompt=1, default=2, cancelreturn=3})
+    api.nvim_set_var('opts', { prompt = 1, default = 2, cancelreturn = 3 })
     feed([[:echo input(opts)<CR>]])
     screen:expect([[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:1}2^                       |
     ]])
     feed('<BS>')
     screen:expect([[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:1}^                        |
     ]])
     feed('<Esc>')
     screen:expect([[
       ^                         |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:3}                        |
     ]])
   end)
   it('works with redraw', function()
     command('echohl Test')
-    meths.set_var('opts', {prompt='Foo>', default='Bar'})
+    api.nvim_set_var('opts', { prompt = 'Foo>', default = 'Bar' })
     feed([[:echo input(opts)<CR>]])
     screen:expect([[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:Foo>}Bar^                  |
     ]])
     command('mode')
-    screen:expect{grid=[[
+    screen:expect {
+      grid = [[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:Foo>}Bar^                  |
-    ]], reset=true}
+    ]],
+      reset = true,
+    }
     feed('<BS>')
     screen:expect([[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:Foo>}Ba^                   |
     ]])
     command('mode')
-    screen:expect{grid=[[
+    screen:expect {
+      grid = [[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {T:Foo>}Ba^                   |
-    ]], reset=true}
+    ]],
+      reset = true,
+    }
   end)
-  it('allows omitting everything with dictionary argument', function()
+  it('allows omitting everything with dict argument', function()
     command('echohl Test')
     feed(':echo inputdialog({})<CR>')
     screen:expect([[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       ^                         |
     ]])
   end)
   it('supports completion', function()
     feed(':let var = inputdialog({"completion": "customlist,CustomListCompl"})<CR>')
     feed('<Tab><CR>')
-    eq('FOO', meths.get_var('var'))
+    eq('FOO', api.nvim_get_var('var'))
   end)
   it('supports cancelreturn', function()
     feed(':let var = inputdialog("", "", "CR1")<CR>')
     feed('<Esc>')
-    eq('CR1', meths.get_var('var'))
+    eq('CR1', api.nvim_get_var('var'))
 
     feed(':let var = inputdialog({"cancelreturn": "BAR"})<CR>')
     feed('<Esc>')
-    eq('BAR', meths.get_var('var'))
+    eq('BAR', api.nvim_get_var('var'))
   end)
   it('supports default string', function()
     feed(':let var = inputdialog("", "DEF1")<CR>')
     feed('<CR>')
-    eq('DEF1', meths.get_var('var'))
+    eq('DEF1', api.nvim_get_var('var'))
 
     feed(':let var = inputdialog({"default": "DEF2"})<CR>')
     feed('<CR>')
-    eq('DEF2', meths.get_var('var'))
+    eq('DEF2', api.nvim_get_var('var'))
   end)
   it('errors out on invalid inputs', function()
-    eq('Vim(call):E730: using List as a String',
-       exc_exec('call inputdialog([])'))
-    eq('Vim(call):E730: using List as a String',
-       exc_exec('call inputdialog("", [])'))
-    eq('Vim(call):E730: using List as a String',
-       exc_exec('call inputdialog("", "", [])'))
-    eq('Vim(call):E730: using List as a String',
-       exc_exec('call inputdialog({"prompt": []})'))
-    eq('Vim(call):E730: using List as a String',
-       exc_exec('call inputdialog({"default": []})'))
-    eq('Vim(call):E730: using List as a String',
-       exc_exec('call inputdialog({"completion": []})'))
-    eq('Vim(call):E5050: {opts} must be the only argument',
-       exc_exec('call inputdialog({}, "default")'))
-    eq('Vim(call):E118: Too many arguments for function: inputdialog',
-       exc_exec('call inputdialog("prompt> ", "default", "file", "extra")'))
+    eq('Vim(call):E730: Using a List as a String', exc_exec('call inputdialog([])'))
+    eq('Vim(call):E730: Using a List as a String', exc_exec('call inputdialog("", [])'))
+    eq('Vim(call):E730: Using a List as a String', exc_exec('call inputdialog("", "", [])'))
+    eq('Vim(call):E730: Using a List as a String', exc_exec('call inputdialog({"prompt": []})'))
+    eq('Vim(call):E730: Using a List as a String', exc_exec('call inputdialog({"default": []})'))
+    eq('Vim(call):E730: Using a List as a String', exc_exec('call inputdialog({"completion": []})'))
+    eq(
+      'Vim(call):E5050: {opts} must be the only argument',
+      exc_exec('call inputdialog({}, "default")')
+    )
+    eq(
+      'Vim(call):E118: Too many arguments for function: inputdialog',
+      exc_exec('call inputdialog("prompt> ", "default", "file", "extra")')
+    )
   end)
   it('supports highlighting', function()
     command('nnoremap <expr> X inputdialog({"highlight": "RainBowParens"})[-1]')
@@ -441,95 +399,85 @@ describe('inputdialog()', function()
     feed('(())')
     screen:expect([[
                                |
-      {EOB:~                        }|
-      {EOB:~                        }|
-      {EOB:~                        }|
+      {EOB:~                        }|*3
       {RBP1:(}{RBP2:()}{RBP1:)}^                     |
     ]])
   end)
 end)
 
 describe('confirm()', function()
-  -- oldtest: Test_confirm()
   it('works', function()
-    meths.set_option('more', false)  -- Avoid hit-enter prompt
-    meths.set_option('laststatus', 2)
+    api.nvim_set_option_value('more', false, {}) -- Avoid hit-enter prompt
+    api.nvim_set_option_value('laststatus', 2, {})
     -- screen:expect() calls are needed to avoid feeding input too early
-    screen:expect({any = '%[No Name%]'})
+    screen:expect({ any = '%[No Name%]' })
 
-    async_meths.command([[let a = confirm('Press O to proceed')]])
-    screen:expect({any = '{CONFIRM:.+: }'})
+    async_meths.nvim_command([[let a = confirm('Press O to proceed')]])
+    screen:expect({ any = '{CONFIRM:.+: }' })
     feed('o')
-    screen:expect({any = '%[No Name%]'})
-    eq(1, meths.get_var('a'))
+    screen:expect({ any = '%[No Name%]' })
+    eq(1, api.nvim_get_var('a'))
 
-    async_meths.command([[let a = 'Are you sure?'->confirm("&Yes\n&No")]])
-    screen:expect({any = '{CONFIRM:.+: }'})
+    async_meths.nvim_command([[let a = 'Are you sure?'->confirm("&Yes\n&No")]])
+    screen:expect({ any = '{CONFIRM:.+: }' })
     feed('y')
-    screen:expect({any = '%[No Name%]'})
-    eq(1, meths.get_var('a'))
+    screen:expect({ any = '%[No Name%]' })
+    eq(1, api.nvim_get_var('a'))
 
-    async_meths.command([[let a = confirm('Are you sure?', "&Yes\n&No")]])
-    screen:expect({any = '{CONFIRM:.+: }'})
+    async_meths.nvim_command([[let a = confirm('Are you sure?', "&Yes\n&No")]])
+    screen:expect({ any = '{CONFIRM:.+: }' })
     feed('n')
-    screen:expect({any = '%[No Name%]'})
-    eq(2, meths.get_var('a'))
+    screen:expect({ any = '%[No Name%]' })
+    eq(2, api.nvim_get_var('a'))
 
     -- Not possible to match Vim's CTRL-C test here as CTRL-C always sets got_int in Nvim.
 
     -- confirm() should return 0 when pressing ESC.
-    async_meths.command([[let a = confirm('Are you sure?', "&Yes\n&No")]])
-    screen:expect({any = '{CONFIRM:.+: }'})
+    async_meths.nvim_command([[let a = confirm('Are you sure?', "&Yes\n&No")]])
+    screen:expect({ any = '{CONFIRM:.+: }' })
     feed('<Esc>')
-    screen:expect({any = '%[No Name%]'})
-    eq(0, meths.get_var('a'))
+    screen:expect({ any = '%[No Name%]' })
+    eq(0, api.nvim_get_var('a'))
 
     -- Default choice is returned when pressing <CR>.
-    async_meths.command([[let a = confirm('Are you sure?', "&Yes\n&No")]])
-    screen:expect({any = '{CONFIRM:.+: }'})
+    async_meths.nvim_command([[let a = confirm('Are you sure?', "&Yes\n&No")]])
+    screen:expect({ any = '{CONFIRM:.+: }' })
     feed('<CR>')
-    screen:expect({any = '%[No Name%]'})
-    eq(1, meths.get_var('a'))
+    screen:expect({ any = '%[No Name%]' })
+    eq(1, api.nvim_get_var('a'))
 
-    async_meths.command([[let a = confirm('Are you sure?', "&Yes\n&No", 2)]])
-    screen:expect({any = '{CONFIRM:.+: }'})
+    async_meths.nvim_command([[let a = confirm('Are you sure?', "&Yes\n&No", 2)]])
+    screen:expect({ any = '{CONFIRM:.+: }' })
     feed('<CR>')
-    screen:expect({any = '%[No Name%]'})
-    eq(2, meths.get_var('a'))
+    screen:expect({ any = '%[No Name%]' })
+    eq(2, api.nvim_get_var('a'))
 
-    async_meths.command([[let a = confirm('Are you sure?', "&Yes\n&No", 0)]])
-    screen:expect({any = '{CONFIRM:.+: }'})
+    async_meths.nvim_command([[let a = confirm('Are you sure?', "&Yes\n&No", 0)]])
+    screen:expect({ any = '{CONFIRM:.+: }' })
     feed('<CR>')
-    screen:expect({any = '%[No Name%]'})
-    eq(0, meths.get_var('a'))
+    screen:expect({ any = '%[No Name%]' })
+    eq(0, api.nvim_get_var('a'))
 
     -- Test with the {type} 4th argument
-    for _, type in ipairs({'Error', 'Question', 'Info', 'Warning', 'Generic'}) do
-      async_meths.command(([[let a = confirm('Are you sure?', "&Yes\n&No", 1, '%s')]]):format(type))
-      screen:expect({any = '{CONFIRM:.+: }'})
+    for _, type in ipairs({ 'Error', 'Question', 'Info', 'Warning', 'Generic' }) do
+      async_meths.nvim_command(
+        ([[let a = confirm('Are you sure?', "&Yes\n&No", 1, '%s')]]):format(type)
+      )
+      screen:expect({ any = '{CONFIRM:.+: }' })
       feed('y')
-      screen:expect({any = '%[No Name%]'})
-      eq(1, meths.get_var('a'))
+      screen:expect({ any = '%[No Name%]' })
+      eq(1, api.nvim_get_var('a'))
     end
-
-    eq('Vim(call):E730: using List as a String',
-       pcall_err(command, 'call confirm([])'))
-    eq('Vim(call):E730: using List as a String',
-       pcall_err(command, 'call confirm("Are you sure?", [])'))
-    eq('Vim(call):E745: Using a List as a Number',
-       pcall_err(command, 'call confirm("Are you sure?", "&Yes\n&No\n", [])'))
-    eq('Vim(call):E730: using List as a String',
-       pcall_err(command, 'call confirm("Are you sure?", "&Yes\n&No\n", 0, [])'))
   end)
 
-  it("shows dialog even if :silent #8788", function()
+  it('shows dialog even if :silent #8788', function()
     command("autocmd BufNewFile * call confirm('test')")
 
     local function check_and_clear(edit_line)
       screen:expect([[
                                  |
         {SEP:                         }|
-        ]]..edit_line..[[
+        ]] .. edit_line .. [[
         {CONFIRM:test}                     |
         {CONFIRM:[O]k: }^                   |
       ]])
@@ -552,11 +500,11 @@ describe('confirm()', function()
     feed(':silent edit foo<cr>')
     check_and_clear(':silent edit foo         |\n')
 
-    -- With API (via eval/VimL) call and shortmess+=F
+    -- With API (via eval/Vimscript) call and shortmess+=F
     feed(':call nvim_command("edit x")<cr>')
     check_and_clear(':call nvim_command("edit |\n')
 
-    async_meths.command('edit x')
+    async_meths.nvim_command('edit x')
     check_and_clear('                         |\n')
   end)
 end)

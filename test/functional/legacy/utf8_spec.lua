@@ -1,11 +1,13 @@
 -- Tests for Unicode manipulations
 
-local helpers = require('test.functional.helpers')(after_each)
-local clear, feed, insert = helpers.clear, helpers.feed, helpers.insert
-local command, expect = helpers.command, helpers.expect
-local eq, eval = helpers.eq, helpers.eval
-local source = helpers.source
-local poke_eventloop = helpers.poke_eventloop
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear, feed, insert = n.clear, n.feed, n.insert
+local command, expect = n.command, n.expect
+local eq, eval = t.eq, n.eval
+local source = n.source
+local poke_eventloop = n.poke_eventloop
 
 describe('utf8', function()
   before_each(clear)

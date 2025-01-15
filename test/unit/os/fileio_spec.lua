@@ -1,12 +1,13 @@
-local lfs = require('lfs')
+local uv = vim.uv
 
-local helpers = require('test.unit.helpers')(after_each)
-local itp = helpers.gen_itp(it)
+local t = require('test.unit.testutil')
+local itp = t.gen_itp(it)
 
-local eq = helpers.eq
-local ffi = helpers.ffi
-local cimport = helpers.cimport
-local cppimport = helpers.cppimport
+local eq = t.eq
+local ffi = t.ffi
+local cimport = t.cimport
+local cppimport = t.cppimport
+local mkdir = t.mkdir
 
 local m = cimport('./src/nvim/os/os.h', './src/nvim/os/fileio.h')
 cppimport('fcntl.h')
@@ -25,7 +26,7 @@ local linkb = dir .. '/broken.lnk'
 local filec = dir .. '/created-file.dat'
 
 before_each(function()
-  lfs.mkdir(dir);
+  mkdir(dir)
 
   local f1 = io.open(file1, 'w')
   f1:write(fcontents)
@@ -35,8 +36,8 @@ before_each(function()
   f2:write(fcontents)
   f2:close()
 
-  lfs.link('file1.dat', linkf, true)
-  lfs.link('broken.dat', linkb, true)
+  uv.fs_symlink('file1.dat', linkf)
+  uv.fs_symlink('broken.dat', linkb)
 end)
 
 after_each(function()
@@ -45,7 +46,7 @@ after_each(function()
   os.remove(linkf)
   os.remove(linkb)
   os.remove(filec)
-  lfs.rmdir(dir)
+  uv.fs_rmdir(dir)
 end)
 
 local function file_open(fname, flags, mode)
@@ -54,30 +55,14 @@ local function file_open(fname, flags, mode)
   return ret1, ret2
 end
 
-local function file_open_new(fname, flags, mode)
-  local ret1 = ffi.new('int[?]', 1, {0})
-  local ret2 = ffi.gc(m.file_open_new(ret1, fname, flags, mode), nil)
-  return ret1[0], ret2
-end
-
 local function file_open_fd(fd, flags)
   local ret2 = ffi.new('FileDescriptor')
   local ret1 = m.file_open_fd(ret2, fd, flags)
   return ret1, ret2
 end
 
-local function file_open_fd_new(fd, flags)
-  local ret1 = ffi.new('int[?]', 1, {0})
-  local ret2 = ffi.gc(m.file_open_fd_new(ret1, fd, flags), nil)
-  return ret1[0], ret2
-end
-
 local function file_write(fp, buf)
   return m.file_write(fp, buf, #buf)
-end
-
-local function msgpack_file_write(fp, buf)
-  return m.msgpack_file_write(fp, buf, #buf)
 end
 
 local function file_read(fp, size)
@@ -115,37 +100,17 @@ describe('file_open_fd', function()
     local fd = m.os_open(file1, m.kO_RDONLY, 0)
     local err, fp = file_open_fd(fd, m.kFileReadOnly)
     eq(0, err)
-    eq({#fcontents, fcontents}, {file_read(fp, #fcontents)})
+    eq({ #fcontents, fcontents }, { file_read(fp, #fcontents) })
     eq(0, m.file_close(fp, false))
   end)
   itp('can use file descriptor returned by os_open for writing', function()
-    eq(nil, lfs.attributes(filec))
+    eq(nil, uv.fs_stat(filec))
     local fd = m.os_open(filec, m.kO_WRONLY + m.kO_CREAT, 384)
     local err, fp = file_open_fd(fd, m.kFileWriteOnly)
     eq(0, err)
     eq(4, file_write(fp, 'test'))
     eq(0, m.file_close(fp, false))
-    eq(4, lfs.attributes(filec).size)
-    eq('test', io.open(filec):read('*a'))
-  end)
-end)
-
-describe('file_open_fd_new', function()
-  itp('can use file descriptor returned by os_open for reading', function()
-    local fd = m.os_open(file1, m.kO_RDONLY, 0)
-    local err, fp = file_open_fd_new(fd, m.kFileReadOnly)
-    eq(0, err)
-    eq({#fcontents, fcontents}, {file_read(fp, #fcontents)})
-    eq(0, m.file_free(fp, false))
-  end)
-  itp('can use file descriptor returned by os_open for writing', function()
-    eq(nil, lfs.attributes(filec))
-    local fd = m.os_open(filec, m.kO_WRONLY + m.kO_CREAT, 384)
-    local err, fp = file_open_fd_new(fd, m.kFileWriteOnly)
-    eq(0, err)
-    eq(4, file_write(fp, 'test'))
-    eq(0, m.file_free(fp, false))
-    eq(4, lfs.attributes(filec).size)
+    eq(4, uv.fs_stat(filec).size)
     eq('test', io.open(filec):read('*a'))
   end)
 end)
@@ -154,32 +119,32 @@ describe('file_open', function()
   itp('can create a rwx------ file with kFileCreate', function()
     local err, fp = file_open(filec, m.kFileCreate, 448)
     eq(0, err)
-    local attrs = lfs.attributes(filec)
-    eq('rwx------', attrs.permissions)
+    local attrs = uv.fs_stat(filec)
+    eq(33216, attrs.mode)
     eq(0, m.file_close(fp, false))
   end)
 
   itp('can create a rw------- file with kFileCreate', function()
     local err, fp = file_open(filec, m.kFileCreate, 384)
     eq(0, err)
-    local attrs = lfs.attributes(filec)
-    eq('rw-------', attrs.permissions)
+    local attrs = uv.fs_stat(filec)
+    eq(33152, attrs.mode)
     eq(0, m.file_close(fp, false))
   end)
 
   itp('can create a rwx------ file with kFileCreateOnly', function()
     local err, fp = file_open(filec, m.kFileCreateOnly, 448)
     eq(0, err)
-    local attrs = lfs.attributes(filec)
-    eq('rwx------', attrs.permissions)
+    local attrs = uv.fs_stat(filec)
+    eq(33216, attrs.mode)
     eq(0, m.file_close(fp, false))
   end)
 
   itp('can create a rw------- file with kFileCreateOnly', function()
     local err, fp = file_open(filec, m.kFileCreateOnly, 384)
     eq(0, err)
-    local attrs = lfs.attributes(filec)
-    eq('rw-------', attrs.permissions)
+    local attrs = uv.fs_stat(filec)
+    eq(33152, attrs.mode)
     eq(0, m.file_close(fp, false))
   end)
 
@@ -192,7 +157,9 @@ describe('file_open', function()
     local err, _ = file_open(linkf, m.kFileNoSymlink, 384)
     -- err is UV_EMLINK in FreeBSD, but if I use `ok(err == m.UV_ELOOP or err ==
     -- m.UV_EMLINK)`, then I loose the ability to see actual `err` value.
-    if err ~= m.UV_ELOOP then eq(m.UV_EMLINK, err) end
+    if err ~= m.UV_ELOOP then
+      eq(m.UV_EMLINK, err)
+    end
   end)
 
   itp('can open an existing file write-only with kFileCreate', function()
@@ -228,7 +195,7 @@ describe('file_open', function()
     eq(0, err)
     eq(true, fp.wr)
     eq(0, m.file_close(fp, false))
-    local attrs = lfs.attributes(file1)
+    local attrs = uv.fs_stat(file1)
     eq(0, attrs.size)
   end)
 
@@ -237,24 +204,23 @@ describe('file_open', function()
     eq(0, err)
     eq(true, fp.wr)
     eq(0, m.file_close(fp, false))
-    local attrs = lfs.attributes(file1)
+    local attrs = uv.fs_stat(file1)
     eq(4096, attrs.size)
   end)
 
   itp('fails to create a file with just kFileWriteOnly', function()
     local err, _ = file_open(filec, m.kFileWriteOnly, 384)
     eq(m.UV_ENOENT, err)
-    local attrs = lfs.attributes(filec)
+    local attrs = uv.fs_stat(filec)
     eq(nil, attrs)
   end)
 
-  itp('can truncate an existing file with kFileTruncate when opening a symlink',
-  function()
+  itp('can truncate an existing file with kFileTruncate when opening a symlink', function()
     local err, fp = file_open(linkf, m.kFileTruncate, 384)
     eq(0, err)
     eq(true, fp.wr)
     eq(0, m.file_close(fp, false))
-    local attrs = lfs.attributes(file1)
+    local attrs = uv.fs_stat(file1)
     eq(0, attrs.size)
   end)
 
@@ -274,42 +240,15 @@ describe('file_open', function()
   end)
 end)
 
-describe('file_open_new', function()
-  itp('can open a file read-only', function()
-    local err, fp = file_open_new(file1, 0, 384)
-    eq(0, err)
-    eq(false, fp.wr)
-    eq(0, m.file_free(fp, false))
-  end)
-
-  itp('fails to open an existing file with kFileCreateOnly', function()
-    local err, fp = file_open_new(file1, m.kFileCreateOnly, 384)
-    eq(m.UV_EEXIST, err)
-    eq(nil, fp)
-  end)
-end)
-
 describe('file_close', function()
   itp('can flush writes to disk also with true argument', function()
     local err, fp = file_open(filec, m.kFileCreateOnly, 384)
     eq(0, err)
     local wsize = file_write(fp, 'test')
     eq(4, wsize)
-    eq(0, lfs.attributes(filec).size)
+    eq(0, uv.fs_stat(filec).size)
     eq(0, m.file_close(fp, true))
-    eq(wsize, lfs.attributes(filec).size)
-  end)
-end)
-
-describe('file_free', function()
-  itp('can flush writes to disk also with true argument', function()
-    local err, fp = file_open_new(filec, m.kFileCreateOnly, 384)
-    eq(0, err)
-    local wsize = file_write(fp, 'test')
-    eq(4, wsize)
-    eq(0, lfs.attributes(filec).size)
-    eq(0, m.file_free(fp, true))
-    eq(wsize, lfs.attributes(filec).size)
+    eq(wsize, uv.fs_stat(filec).size)
   end)
 end)
 
@@ -318,12 +257,12 @@ describe('file_fsync', function()
     local err, fp = file_open(filec, m.kFileCreateOnly, 384)
     eq(0, file_fsync(fp))
     eq(0, err)
-    eq(0, lfs.attributes(filec).size)
+    eq(0, uv.fs_stat(filec).size)
     local wsize = file_write(fp, 'test')
     eq(4, wsize)
-    eq(0, lfs.attributes(filec).size)
+    eq(0, uv.fs_stat(filec).size)
     eq(0, file_fsync(fp))
-    eq(wsize, lfs.attributes(filec).size)
+    eq(wsize, uv.fs_stat(filec).size)
     eq(0, m.file_close(fp, false))
   end)
 end)
@@ -333,12 +272,12 @@ describe('file_flush', function()
     local err, fp = file_open(filec, m.kFileCreateOnly, 384)
     eq(0, file_flush(fp))
     eq(0, err)
-    eq(0, lfs.attributes(filec).size)
+    eq(0, uv.fs_stat(filec).size)
     local wsize = file_write(fp, 'test')
     eq(4, wsize)
-    eq(0, lfs.attributes(filec).size)
+    eq(0, uv.fs_stat(filec).size)
     eq(0, file_flush(fp))
-    eq(wsize, lfs.attributes(filec).size)
+    eq(wsize, uv.fs_stat(filec).size)
     eq(0, m.file_close(fp, false))
   end)
 end)
@@ -355,10 +294,9 @@ describe('file_read', function()
       local exp_s = fcontents:sub(shift + 1, shift + size)
       if shift + size >= #fcontents then
         exp_err = #fcontents - shift
-        exp_s = (fcontents:sub(shift + 1, shift + size)
-                 .. (('\0'):rep(size - exp_err)))
+        exp_s = (fcontents:sub(shift + 1, shift + size) .. (('\0'):rep(size - exp_err)))
       end
-      eq({exp_err, exp_s}, {file_read(fp, size)})
+      eq({ exp_err, exp_s }, { file_read(fp, size) })
       shift = shift + size
     end
     eq(0, m.file_close(fp, false))
@@ -368,8 +306,8 @@ describe('file_read', function()
     local err, fp = file_open(file1, 0, 384)
     eq(0, err)
     eq(false, fp.wr)
-    eq({#fcontents, fcontents}, {file_read(fp, #fcontents)})
-    eq({0, ('\0'):rep(#fcontents)}, {file_read(fp, #fcontents)})
+    eq({ #fcontents, fcontents }, { file_read(fp, #fcontents) })
+    eq({ 0, ('\0'):rep(#fcontents) }, { file_read(fp, #fcontents) })
     eq(0, m.file_close(fp, false))
   end)
 
@@ -377,9 +315,8 @@ describe('file_read', function()
     local err, fp = file_open(file1, 0, 384)
     eq(0, err)
     eq(false, fp.wr)
-    eq({5, fcontents:sub(1, 5)}, {file_read(fp, 5)})
-    eq({#fcontents - 5, fcontents:sub(6) .. (('\0'):rep(5))},
-       {file_read(fp, #fcontents)})
+    eq({ 5, fcontents:sub(1, 5) }, { file_read(fp, 5) })
+    eq({ #fcontents - 5, fcontents:sub(6) .. (('\0'):rep(5)) }, { file_read(fp, #fcontents) })
     eq(0, m.file_close(fp, false))
   end)
 
@@ -394,10 +331,9 @@ describe('file_read', function()
       local exp_s = fcontents:sub(shift + 1, shift + size)
       if shift + size >= #fcontents then
         exp_err = #fcontents - shift
-        exp_s = (fcontents:sub(shift + 1, shift + size)
-                 .. (('\0'):rep(size - exp_err)))
+        exp_s = (fcontents:sub(shift + 1, shift + size) .. (('\0'):rep(size - exp_err)))
       end
-      eq({exp_err, exp_s}, {file_read(fp, size)})
+      eq({ exp_err, exp_s }, { file_read(fp, size) })
       shift = shift + size
     end
     eq(0, m.file_close(fp, false))
@@ -412,7 +348,7 @@ describe('file_write', function()
     local wr = file_write(fp, fcontents)
     eq(#fcontents, wr)
     eq(0, m.file_close(fp, false))
-    eq(wr, lfs.attributes(filec).size)
+    eq(wr, uv.fs_stat(filec).size)
     eq(fcontents, io.open(filec):read('*a'))
   end)
 
@@ -429,7 +365,7 @@ describe('file_write', function()
       shift = shift + size
     end
     eq(0, m.file_close(fp, false))
-    eq(#fcontents, lfs.attributes(filec).size)
+    eq(#fcontents, uv.fs_stat(filec).size)
     eq(fcontents, io.open(filec):read('*a'))
   end)
 
@@ -446,19 +382,7 @@ describe('file_write', function()
       shift = shift + size
     end
     eq(0, m.file_close(fp, false))
-    eq(#fcontents, lfs.attributes(filec).size)
-    eq(fcontents, io.open(filec):read('*a'))
-  end)
-end)
-
-describe('msgpack_file_write', function()
-  itp('can write the whole file at once', function()
-    local err, fp = file_open(filec, m.kFileCreateOnly, 384)
-    eq(0, err)
-    eq(true, fp.wr)
-    local wr = msgpack_file_write(fp, fcontents)
-    eq(0, wr)
-    eq(0, m.file_close(fp, false))
+    eq(#fcontents, uv.fs_stat(filec).size)
     eq(fcontents, io.open(filec):read('*a'))
   end)
 end)

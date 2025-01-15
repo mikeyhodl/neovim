@@ -1,18 +1,19 @@
 -- Tests for undo tree and :earlier and :later.
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local feed_command = helpers.feed_command
-local write_file = helpers.write_file
-local command = helpers.command
-local source = helpers.source
-local expect = helpers.expect
-local clear = helpers.clear
-local feed = helpers.feed
-local eval = helpers.eval
-local eq = helpers.eq
+local feed_command = n.feed_command
+local write_file = t.write_file
+local command = n.command
+local source = n.source
+local expect = n.expect
+local clear = n.clear
+local feed = n.feed
+local eval = n.eval
+local eq = t.eq
 
 local function expect_empty_buffer()
-  -- The space will be removed by helpers.dedent but is needed because dedent
+  -- The space will be removed by t.dedent but is needed because dedent
   -- will fail if it can not find the common indent of the given lines.
   return expect(' ')
 end
@@ -22,29 +23,30 @@ end
 
 describe('undo tree:', function()
   before_each(clear)
+  local fname = 'Xtest_functional_legacy_undotree'
   teardown(function()
-    os.remove('Xtest.source')
+    os.remove(fname .. '.source')
   end)
 
   describe(':earlier and :later', function()
     before_each(function()
-      os.remove('Xtest')
+      os.remove(fname)
     end)
     teardown(function()
-      os.remove('Xtest')
+      os.remove(fname)
     end)
 
     it('time specifications, g- g+', function()
       -- We write the test text to a file in order to prevent nvim to record
       -- the inserting of the text into the undo history.
-      write_file('Xtest', '\n123456789\n')
+      write_file(fname, '\n123456789\n')
 
       -- `:earlier` and `:later` are (obviously) time-sensitive, so this test
       -- sometimes fails if the system is under load. It is wrapped in a local
       -- function to allow multiple attempts.
       local function test_earlier_later()
         clear()
-        feed_command('e Xtest')
+        feed_command('e ' .. fname)
         -- Assert that no undo history is present.
         eq({}, eval('undotree().entries'))
         -- Delete three characters and undo.
@@ -98,12 +100,12 @@ describe('undo tree:', function()
         expect_line('123456abc')
       end
 
-      helpers.retry(2, nil, test_earlier_later)
+      t.retry(2, nil, test_earlier_later)
     end)
 
     it('file-write specifications', function()
       feed('ione one one<esc>')
-      feed_command('w Xtest')
+      feed_command('w ' .. fname)
       feed('otwo<esc>')
       feed('otwo<esc>')
       feed_command('w')
@@ -187,7 +189,7 @@ describe('undo tree:', function()
 
   it('undo an expression-register', function()
     local normal_commands = 'o1\027a2\018=string(123)\n\027'
-    write_file('Xtest.source', normal_commands)
+    write_file(fname .. '.source', normal_commands)
 
     feed('oa<esc>')
     feed('ob<esc>')
@@ -221,7 +223,7 @@ describe('undo tree:', function()
       c
       12]])
     feed('od<esc>')
-    feed_command('so! Xtest.source')
+    feed_command('so! ' .. fname .. '.source')
     expect([[
 
       a

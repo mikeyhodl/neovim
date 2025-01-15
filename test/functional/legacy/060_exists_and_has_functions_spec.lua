@@ -1,15 +1,19 @@
 -- Tests for the exists() and has() functions.
 
-local helpers = require('test.functional.helpers')(after_each)
-local source = helpers.source
-local clear, expect = helpers.clear, helpers.expect
-local write_file = helpers.write_file
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local source = n.source
+local clear, expect = n.clear, n.expect
+local write_file = t.write_file
 
 describe('exists() and has() functions', function()
   setup(function()
     clear()
     -- Create a temporary script needed for the test.
-    write_file('test60.vim', [[
+    write_file(
+      'test60.vim',
+      [[
       " Vim script for exists() function test
       " Script-local variables are checked here
 
@@ -107,7 +111,8 @@ describe('exists() and has() functions', function()
           echo "FAILED"
       endif
       unlet str
-      ]])
+      ]]
+    )
   end)
   teardown(function()
     os.remove('test.out')
@@ -115,7 +120,6 @@ describe('exists() and has() functions', function()
   end)
 
   it('is working', function()
-
     source([=[
       " Add the special directory with test scripts to &rtp
       set rtp+=test/functional/fixtures
@@ -850,6 +854,5 @@ describe('exists() and has() functions', function()
        g:footest#x = 1
          footest#F() 0
       UndefFun() 0]])
-
   end)
 end)

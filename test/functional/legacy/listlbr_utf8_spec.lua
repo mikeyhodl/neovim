@@ -1,12 +1,15 @@
 -- Test for linebreak and list option in utf-8 mode
 
-local helpers = require('test.functional.helpers')(after_each)
-local source = helpers.source
-local feed = helpers.feed
-local clear, expect = helpers.clear, helpers.expect
+local n = require('test.functional.testnvim')()
+local Screen = require('test.functional.ui.screen')
+
+local source = n.source
+local feed = n.feed
+local exec = n.exec
+local clear, expect = n.clear, n.expect
 
 describe('linebreak', function()
-  setup(clear)
+  before_each(clear)
 
   -- luacheck: ignore 621 (Indentation)
   -- luacheck: ignore 613 (Trailing whitespaces in a string)
@@ -207,5 +210,24 @@ describe('linebreak', function()
       ＋a b c¶                                
         a b c¶                                
       Screen attributes are the same!]])
+  end)
+
+  -- oldtest: Test_visual_ends_before_showbreak()
+  it("Visual area is correct when it ends before multibyte 'showbreak'", function()
+    local screen = Screen.new(60, 8)
+    exec([[
+      let &wrap = v:true
+      let &linebreak = v:true
+      let &showbreak = '↪ '
+      eval ['xxxxx ' .. 'y'->repeat(&columns - 6) .. ' zzzz']->setline(1)
+      normal! wvel
+    ]])
+    screen:expect([[
+      xxxxx                                                       |
+      {1:↪ }{17:yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy}^ {17:   }|
+      {1:↪ }zzzz                                                      |
+      {1:~                                                           }|*4
+      {5:-- VISUAL --}                                                |
+    ]])
   end)
 end)

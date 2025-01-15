@@ -1,26 +1,19 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 /// @file garray.c
 ///
 /// Functions for handling growing arrays.
 
-#include <inttypes.h>
+#include <stdint.h>
 #include <string.h>
 
-#include "nvim/ascii.h"
 #include "nvim/garray.h"
 #include "nvim/log.h"
+#include "nvim/macros_defs.h"
 #include "nvim/memory.h"
 #include "nvim/path.h"
 #include "nvim/strings.h"
-#include "nvim/vim.h"
-
-// #include "nvim/globals.h"
-#include "nvim/memline.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
-# include "garray.c.generated.h"
+# include "garray.c.generated.h"  // IWYU pragma: keep
 #endif
 
 /// Clear an allocated growing array.
@@ -86,16 +79,12 @@ void ga_grow(garray_T *gap, int n)
   }
 
   // the garray grows by at least growsize
-  if (n < gap->ga_growsize) {
-    n = gap->ga_growsize;
-  }
+  n = MAX(n, gap->ga_growsize);
 
   // A linear growth is very inefficient when the array grows big.  This
   // is a compromise between allocating memory that won't be used and too
   // many copy operations. A factor of 1.5 seems reasonable.
-  if (n < gap->ga_len / 2) {
-    n = gap->ga_len / 2;
-  }
+  n = MAX(n, gap->ga_len / 2);
 
   int new_maxlen = gap->ga_len + n;
 
@@ -178,9 +167,9 @@ char *ga_concat_strings_sep(const garray_T *gap, const char *sep)
 /// @param gap
 ///
 /// @returns the concatenated strings
-char_u *ga_concat_strings(const garray_T *gap) FUNC_ATTR_NONNULL_RET
+char *ga_concat_strings(const garray_T *gap) FUNC_ATTR_NONNULL_RET
 {
-  return (char_u *)ga_concat_strings_sep(gap, ",");
+  return ga_concat_strings_sep(gap, ",");
 }
 
 /// Concatenate a string to a growarray which contains characters.
@@ -221,7 +210,16 @@ void ga_concat_len(garray_T *const gap, const char *restrict s, const size_t len
 ///
 /// @param gap
 /// @param c
-void ga_append(garray_T *gap, char c)
+void ga_append(garray_T *gap, uint8_t c)
 {
-  GA_APPEND(char, gap, c);
+  GA_APPEND(uint8_t, gap, c);
+}
+
+void *ga_append_via_ptr(garray_T *gap, size_t item_size)
+{
+  if ((int)item_size != gap->ga_itemsize) {
+    WLOG("wrong item size (%zu), should be %d", item_size, gap->ga_itemsize);
+  }
+  ga_grow(gap, 1);
+  return ((char *)gap->ga_data) + (item_size * (size_t)gap->ga_len++);
 }

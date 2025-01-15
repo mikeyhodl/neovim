@@ -169,33 +169,26 @@ If you want to keep the changed buffer without saving it, switch on the
 2. Editing a file					*edit-a-file*
 
 							*:e* *:edit* *reload*
-:e[dit] [++opt] [+cmd]	Edit the current file.  This is useful to re-edit the
+:e[dit][!] [++opt] [+cmd]
+			Edit the current file.  This is useful to re-edit the
 			current file, when it has been changed outside of Vim.
-			This fails when changes have been made to the current
-			buffer and 'autowriteall' isn't set or the file can't
-			be written.
-			Also see |++opt| and |+cmd|.
-
 							*:edit!* *discard*
-:e[dit]! [++opt] [+cmd]
-			Edit the current file always.  Discard any changes to
-			the current buffer.  This is useful if you want to
-			start all over again.
+			If [!] is given, unsaved changes in the current buffer
+			are discarded. Without [!] the command fails if there
+			are unsaved changes, unless 'autowriteall' is set and
+			the file can be written.
 			Also see |++opt| and |+cmd|.
 
 							*:edit_f*
-:e[dit] [++opt] [+cmd] {file}
+:e[dit][!] [++opt] [+cmd] {file}
 			Edit {file}.
-			This fails when changes have been made to the current
-			buffer, unless 'hidden' is set or 'autowriteall' is
-			set and the file can be written.
+							*:edit!_f*
+			If [!] is given, unsaved changes in the current buffer
+			are discarded. Without [!] the command fails if there
+			are unsaved changes, unless 'hidden' is set or
+			'autowriteall' is set and the file can be written.
 			Also see |++opt| and |+cmd|.
 
-							*:edit!_f*
-:e[dit]! [++opt] [+cmd] {file}
-			Edit {file} always.  Discard any changes to the
-			current buffer.
-			Also see |++opt| and |+cmd|.
 							*:edit_#* *:e#*
 :e[dit] [++opt] [+cmd] #[count]
 			Edit the [count]th buffer (as shown by |:files|).
@@ -345,9 +338,9 @@ escaped with a backslash.
 Wildcards in {file} are expanded, but as with file completion, 'wildignore'
 and 'suffixes' apply.  Which wildcards are supported depends on the system.
 These are the common ones:
-	?	matches one character
-	*	matches anything, including nothing
-	**	matches anything, including nothing, recurses into directories
+	`?`	matches one character
+	`*`	matches anything, including nothing
+	`**`	matches anything, including nothing, recurses into directories
 	[abc]	match 'a', 'b' or 'c'
 
 To avoid the special meaning of the wildcards prepend a backslash.  However,
@@ -356,7 +349,9 @@ as a wildcard when "[" is in the 'isfname' option.  A simple way to avoid this
 is to use "path\[[]abc]", this matches the file "path\[abc]".
 
 					*starstar-wildcard*
-Expanding "**" is possible on Unix, Win32, macOS and a few other systems.
+Expanding "**" is possible on Unix, Win32, macOS and a few other systems (but
+it may depend on your 'shell' setting on Unix and macOS. It's known to work
+correctly for zsh; for bash this requires at least bash version >= 4.X).
 This allows searching a directory tree.  This goes up to 100 directories deep.
 Note there are some commands where this works slightly differently, see
 |file-searching|.
@@ -406,7 +401,7 @@ external command, by putting an equal sign right after the first backtick,
 e.g.: >
 	:e `=tempname()`
 The expression can contain just about anything, thus this can also be used to
-avoid the special meaning of '"', '|', '%' and '#'.  However, 'wildignore'
+avoid the special meaning of '"', "|", '%' and '#'.  However, 'wildignore'
 does apply like to other wildcards.
 
 Environment variables in the expression are expanded when evaluating the
@@ -423,9 +418,8 @@ Note that such expressions are only supported in places where a filename is
 expected as an argument to an Ex-command.
 
 							*++opt* *[++opt]*
-The [++opt] argument can be used to force the value of 'fileformat',
-'fileencoding' or 'binary' to a value for one command, and to specify the
-behavior for bad characters.  The form is: >
+The [++opt] argument can be used to set some options for one command, and to
+specify the behavior for bad characters.  The form is: >
 	++{optname}
 Or: >
 	++{optname}={value}
@@ -436,11 +430,11 @@ Where {optname} is one of:	    *++ff* *++enc* *++bin* *++nobin* *++edit*
     bin    or  binary	    sets 'binary'
     nobin  or  nobinary	    resets 'binary'
     bad			    specifies behavior for bad characters
-    edit		    for |:read| only: keep option values as if editing
-			    a file
+    edit		    for |:read|: keeps options as if editing a file
+    p			    for |:write|: creates the file's parent directory
 
-{value} cannot contain white space.  It can be any valid value for these
-options.  Examples: >
+{value} cannot contain whitespace.  It can be any valid value for the options.
+Examples: >
 	:e ++ff=unix
 This edits the same file again with 'fileformat' set to "unix". >
 
@@ -450,8 +444,23 @@ This writes the current buffer to "newfile" in latin1 format.
 The message given when writing a file will show "[converted]" when
 'fileencoding' or the value specified with ++enc differs from 'encoding'.
 
-There may be several ++opt arguments, separated by white space.  They must all
+There may be several ++opt arguments, separated by whitespace.  They must all
 appear before any |+cmd| argument.
+
+								*++p*
+The "++p" flag creates the parent directory of the file if it does not exist.
+For example if you edit "foo/bar/file.txt", the ":write ++p" command creates
+"foo/bar/" if necessary before writing the file. >
+
+	:edit foo/bar/file.txt
+	:write ++p
+
+If you want :write (without "++p") to always create missing parent
+directories, add this autocmd to your config: >
+
+	" Auto-create parent directories (except for URIs "://").
+	au BufWritePre,FileWritePre * if @% !~# '\(://\)' | call mkdir(expand('<afile>:p:h'), 'p') | endif
+<
 
 								*++bad*
 The argument of "++bad=" specifies what happens with characters that can't be
@@ -525,10 +534,10 @@ set to "dos", otherwise it is set to "unix".  When 'fileformats' includes
 "mac".
 
 If the 'fileformat' option is set to "dos" on non-MS-Windows systems the
-message "[dos format]" is shown to remind you that something unusual is
-happening.  On MS-Windows systems you get the message "[unix format]" if
-'fileformat' is set to "unix".  On all systems but the Macintosh you get the
-message "[mac format]" if 'fileformat' is set to "mac".
+message "[dos]" is shown to remind you that something unusual is happening.  On
+MS-Windows systems you get the message "[unix]" if 'fileformat' is set to
+"unix".  On all systems you get the message "[mac]" if 'fileformat' is set to
+"mac".
 
 If the 'fileformats' option is empty and DOS format is used, but while reading
 a file some lines did not end in <CR><NL>, "[CR missing]" will be included in
@@ -623,9 +632,12 @@ list of the current window.
 
 :[count]arge[dit][!] [++opt] [+cmd] {name} ..		*:arge* *:argedit*
 			Add {name}s to the argument list and edit it.
-			When {name} already exists in the argument list, this
-			entry is edited.
-			This is like using |:argadd| and then |:edit|.
+			There is no check for duplicates, it is possible to
+			add a file to the argument list twice |:argded|.
+			This is like using |:argadd| and then |:edit| (with
+			the small exception that |:edit| does not change the
+			argument list, so the argument list pointer isn't
+			changed).
 			Spaces in filenames have to be escaped with "\".
 			[count] is used like with |:argadd|.
 			If the current file cannot be |abandon|ed {name}s will
@@ -634,7 +646,7 @@ list of the current window.
 			Also see |++opt| and |+cmd|.
 
 :[count]arga[dd] {name} ..			*:arga* *:argadd* *E479*
-:[count]arga[dd]
+:[count]arga[dd]						*E1156*
 			Add the {name}s to the argument list.  When {name} is
 			omitted add the current buffer name to the argument
 			list.
@@ -644,12 +656,12 @@ list of the current window.
 			If the argument list is "a b c", and "b" is the
 			current argument, then these commands result in:
 				command		new argument list ~
-				:argadd x	a b x c
-				:0argadd x	x a b c
-				:1argadd x	a x b c
-				:$argadd x	a b c x
+				:argadd x	a  [b]  x  c
+				:0argadd x	x   a  [b] c
+				:1argadd x	a   x  [b] c
+				:$argadd x	a  [b]  c  x
 			And after the last one:
-				:+2argadd y	a b c x y
+				:+2argadd y	a  [b]  c  x  y
 			There is no check for duplicates, it is possible to
 			add a file to the argument list twice.  You can use
 			|:argdedupe| to fix it afterwards: >
@@ -702,7 +714,7 @@ list of the current window.
 			omitted the current entry is used.
 			Also see |++opt| and |+cmd|.
 
-:[count]n[ext] [++opt] [+cmd]			*:n* *:ne* *:next* *E165* *E163*
+:[count]n[ext] [++opt] [+cmd]			*:n* *:ne* *:next* *]a* *E165* *E163*
 			Edit [count] next file.  This fails when changes have
 			been made and Vim does not want to |abandon| the
 			current buffer.  Also see |++opt| and |+cmd|.
@@ -728,10 +740,10 @@ list of the current window.
 			any changes to the buffer.  Also see |++opt| and
 			|+cmd|.
 
-:[count]prev[ious] [count] [++opt] [+cmd]		*:prev* *:previous*
+:[count]prev[ious] [count] [++opt] [+cmd]		*:prev* *:previous* *[a*
 			Same as :Next.  Also see |++opt| and |+cmd|.
 
-							*:rew* *:rewind*
+							*:rew* *:rewind* *[A*
 :rew[ind] [++opt] [+cmd]
 			Start editing the first file in the argument list.
 			This fails when changes have been made and Vim does
@@ -747,7 +759,7 @@ list of the current window.
 :fir[st][!] [++opt] [+cmd]
 			Other name for ":rewind".
 
-							*:la* *:last*
+							*:la* *:last* *]A*
 :la[st] [++opt] [+cmd]
 			Start editing the last file in the argument list.
 			This fails when changes have been made and Vim does
@@ -790,8 +802,8 @@ first line (the last line in Ex mode).
 
 							*{arglist}*
 The wildcards in the argument list are expanded and the file names are sorted.
-Thus you can use the command "vim *.c" to edit all the C files.  From within
-Vim the command ":n *.c" does the same.
+Thus you can use the command `vim *.c` to edit all the C files.  From within
+Vim the command `:n *.c` does the same.
 
 White space is used to separate file names.  Put a backslash before a space or
 tab to include it in a file name.  E.g., to edit the single file "foo bar": >
@@ -806,12 +818,10 @@ by the shell before executing the find program.
 When there is an argument list you can see which file you are editing in the
 title of the window (if there is one and 'title' is on) and with the file
 message you get with the "CTRL-G" command.  You will see something like
-	(file 4 of 11)
-If 'shortmess' contains 'f' it will be
 	(4 of 11)
 If you are not really editing the file at the current position in the argument
 list it will be
-	(file (4) of 11)
+	((4) of 11)
 This means that you are position 4 in the argument list, but not editing the
 fourth file in the argument list.  This happens when you do ":e file".
 
@@ -875,12 +885,12 @@ Example: >
 	:args *.c
 	:argdo set ff=unix | update
 This sets the 'fileformat' option to "unix" and writes the file if it is now
-changed.  This is done for all *.c files.
+changed.  This is done for all `*.c` files.
 
 Example: >
 	:args *.[ch]
 	:argdo %s/\<my_foo\>/My_Foo/ge | update
-This changes the word "my_foo" to "My_Foo" in all *.c and *.h files.  The "e"
+This changes the word "my_foo" to "My_Foo" in all "*.c" and "*.h" files.  The "e"
 flag is used for the ":substitute" command to avoid an error for files where
 "my_foo" isn't used.  ":update" writes the file only if changes were made.
 
@@ -893,11 +903,13 @@ Note: When the 'write' option is off, you are not able to write any file.
 					*E502* *E503* *E504* *E505*
 					*E512* *E514* *E667* *E949*
 :w[rite] [++opt]	Write the whole buffer to the current file.  This is
-			the normal way to save changes to a file.  It fails
-			when the 'readonly' option is set or when there is
-			another reason why the file can't be written.
-			For ++opt see |++opt|, but only ++bin, ++nobin, ++ff
-			and ++enc are effective.
+			the normal way to save changes to a file.  Fails when
+			'readonly' is set or when there is another reason why
+			the file can't be written, such as when the parent
+			directory doesn't exist (use |++p| to avoid that).
+			For ++opt see |++opt|, but only ++p, ++bin, ++nobin,
+			++ff and ++enc are effective.
+
 
 :w[rite]! [++opt]	Like ":write", but forcefully write when 'readonly' is
 			set or there is another reason why writing was
@@ -1020,6 +1032,15 @@ explanation of when the copy is made and when the file is renamed.
 If the creation of a backup file fails, the write is not done.  If you want
 to write anyway add a '!' to the command.
 
+							*file-watcher*
+When you notice issues with programs, that act upon when a buffer is written
+(like inotify, entr or fswatch) or when external applications execute Vim to
+edit the file (like git) and those programs do not seem to notice that the
+original file has been changed, you may want to consider switching the
+'backupcopy' option value to "yes".  This makes sure, Vim writes to the same
+file, that those watcher programs expect, without creating a new file (which
+prevents them from detecting that the file has changed).  See also |crontab|
+
 							*write-permissions*
 When writing a new file the permissions are read-write.  For unix the mask is
 0o666 with additionally umask applied.  When writing a file that was read Vim
@@ -1042,14 +1063,14 @@ lost the original file.
 
 						*DOS-format-write*
 If the 'fileformat' is "dos", <CR><NL> is used for <EOL>.  This is default
-for Windows. On other systems the message "[dos format]" is shown to
+for Windows. On other systems the message "[dos]" is shown to
 remind you that an unusual <EOL> was used.
 						*Unix-format-write*
 If the 'fileformat' is "unix", <NL> is used for <EOL>.  On Windows
-the message "[unix format]" is shown.
+the message "[unix]" is shown.
 						*Mac-format-write*
-If the 'fileformat' is "mac", <CR> is used for <EOL>.  On non-Mac systems the
-message "[mac format]" is shown.
+If the 'fileformat' is "mac", <CR> is used for <EOL>.  The
+message "[mac]" is shown.
 
 See also |file-formats| and the 'fileformat' and 'fileformats' options.
 
@@ -1061,6 +1082,13 @@ when the filesystem supports it.
 will get the ACL info of the original file.
    The ACL info is also used to check if a file is read-only (when opening the
 file).
+
+					*xattr* *E1506* *E1508* *E1509*
+xattr stands for Extended Attributes.  It is an advanced way to save metadata
+alongside the file in the filesystem.  It depends on the actual filesystem
+being used and Vim supports it only on a Linux system.
+   Vim attempts to preserve the extended attribute info when writing a file.
+The backup file will get the extended attribute of the original file.
 
 						*read-only-share*
 When MS-Windows shares a drive on the network it can be marked as read-only.
@@ -1201,10 +1229,10 @@ MULTIPLE WINDOWS AND BUFFERS				*window-exit*
 							*:confirm* *:conf*
 :conf[irm] {command}	Execute {command}, and use a dialog when an
 			operation has to be confirmed.  Can be used on the
-			|:q|, |:qa| and |:w| commands (the latter to override
-			a read-only setting), and any other command that can
-			fail in such a way, such as |:only|, |:buffer|,
-			|:bdelete|, etc.
+			|:edit|, |:q|, |:qa| and |:w| commands (the latter to
+			override a read-only setting), and any commands that
+			can fail because of unsaved changes, such as |:only|,
+			|:buffer|, |:bdelete|, etc.
 
 Examples: >
   :confirm w foo
@@ -1229,8 +1257,8 @@ If you want to always use ":confirm", set the 'confirm' option.
 			|:diffsplit|, |:diffpatch|, |:pedit|, |:redir|,
 			|:source|, |:update|, |:visual|, |:vsplit|,
 			and |:qall| if 'confirm' is set.
-			{only in Win32 GUI, in console `browse edit` works
-			if the FileExplorer autocommand group exists}
+			Note: only in Win32 GUI; in console `:browse edit`
+			works if the FileExplorer autocommand group exists.
 			When ":browse" is not possible you get an error
 			message.  If {command} doesn't support browsing, the
 			{command} is executed without a dialog.
@@ -1260,23 +1288,24 @@ unmodified.
 For MS-Windows you can modify the filters that are used in the browse
 dialog.  By setting the g:browsefilter or b:browsefilter variables, you can
 change the filters globally or locally to the buffer.  The variable is set to
-a string in the format "{filter label}\t{pattern};{pattern}\n" where {filter
-label} is the text that appears in the "Files of Type" comboBox, and {pattern}
+a string in the format "{filter label}\t{pattern};{pattern}\n" where "{filter
+label}" is the text that appears in the "Files of Type" comboBox, and {pattern}
 is the pattern which filters the filenames.  Several patterns can be given,
 separated by ';'.
 
 For example, to have only Vim files in the dialog, you could use the following
 command: >
 
-     let g:browsefilter = "Vim Scripts\t*.vim\nVim Startup Files\t*vimrc\n"
+     let g:browsefilter = "Vim scripts\t*.vim\nVim Startup Files\t*vimrc\n"
 
 You can override the filter setting on a per-buffer basis by setting the
 b:browsefilter variable.  You would most likely set b:browsefilter in a
 filetype plugin, so that the browse dialog would contain entries related to
 the type of file you are currently editing.  Disadvantage: This makes it
 difficult to start editing a file of a different type.  To overcome this, you
-may want to add "All Files\t*.*\n" as the final filter, so that the user can
-still access any desired file.
+may want to add "All Files (*.*)\t*\n" as the final filter on Windows or "All
+Files (*)\t*\n" on other platforms, so that the user can still access any
+desired file.
 
 To avoid setting browsefilter when Vim does not actually support it, you can
 use has("browsefilter"): >
@@ -1309,6 +1338,7 @@ exist, the next-higher scope in the hierarchy applies.
 :cd[!] {path}		Change the current directory to {path}.
 			If {path} is relative, it is searched for in the
 			directories listed in |'cdpath'|.
+			Clear any window-local directory.
 			Does not change the meaning of an already opened file,
 			because its full path name is remembered.  Files from
 			the |arglist| may change though!
@@ -1559,21 +1589,21 @@ which is slightly different.
 There are three different types of searching:
 
 1) Downward search:					*starstar*
-   Downward search uses the wildcards '*', '**' and possibly others
-   supported by your operating system.  '*' and '**' are handled inside Vim,
+   Downward search uses the wildcards "*", "**" and possibly others
+   supported by your operating system.  "*" and "**" are handled inside Vim,
    so they work on all operating systems.  Note that "**" only acts as a
    special wildcard when it is at the start of a name.
 
-   The usage of '*' is quite simple: It matches 0 or more characters.  In a
+   The usage of "*" is quite simple: It matches 0 or more characters.  In a
    search pattern this would be ".*".  Note that the "." is not used for file
    searching.
 
-   '**' is more sophisticated:
+   "**" is more sophisticated:
       - It ONLY matches directories.
       - It matches up to 30 directories deep by default, so you can use it to
 	search an entire directory tree
       - The maximum number of levels matched can be given by appending a number
-	to '**'.
+	to "**".
 	Thus '/usr/**2' can match: >
 		/usr
 		/usr/include
@@ -1584,14 +1614,14 @@ There are three different types of searching:
 		....
 <	It does NOT match '/usr/include/g++/std' as this would be three
 	levels.
-	The allowed number range is 0 ('**0' is removed) to 100
+	The allowed number range is 0 ("**0" is removed) to 100
 	If the given number is smaller than 0 it defaults to 30, if it's
 	bigger than 100 then 100 is used.  The system also has a limit on the
 	path length, usually 256 or 1024 bytes.
-      - '**' can only be at the end of the path or be followed by a path
+      - "**" can only be at the end of the path or be followed by a path
 	separator or by a number and a path separator.
 
-   You can combine '*' and '**' in any order: >
+   You can combine "*" and "**" in any order: >
 	/usr/**/sys/*
 	/usr/*tory/sys/**
 	/usr/**2/sys/*
@@ -1602,7 +1632,7 @@ There are three different types of searching:
    stop-directories are appended to the path (for the 'path' option) or to
    the filename (for the 'tags' option) with a ';'.  If you want several
    stop-directories separate them with ';'.  If you want no stop-directory
-   ("search upward till the root directory) just use ';'. >
+   ("search upward till the root directory") just use ';'. >
 	/usr/include/sys;/usr
 <   will search in: >
 	   /usr/include/sys
@@ -1615,7 +1645,7 @@ There are three different types of searching:
 
    If Vim's current path is /u/user_x/work/release and you do >
 	:set path=include;/u/user_x
-<  and then search for a file with |gf| the file is searched in: >
+<   and then search for a file with |gf| the file is searched in: >
 	/u/user_x/work/release/include
 	/u/user_x/work/include
 	/u/user_x/include
@@ -1627,7 +1657,7 @@ There are three different types of searching:
 3) Combined up/downward search:
    If Vim's current path is /u/user_x/work/release and you do >
 	set path=**;/u/user_x
-<  and then search for a file with |gf| the file is searched in: >
+<   and then search for a file with |gf| the file is searched in: >
 	/u/user_x/work/release/**
 	/u/user_x/work/**
 	/u/user_x/**
@@ -1639,13 +1669,38 @@ There are three different types of searching:
 
    In the above example you might want to set path to: >
 	:set path=**,/u/user_x/**
-<  This searches:
-	/u/user_x/work/release/** ~
-	/u/user_x/** ~
-   This searches the same directories, but in a different order.
+<   This searches: >
+	/u/user_x/work/release/**
+	/u/user_x/**
+<   This searches the same directories, but in a different order.
 
    Note that completion for ":find", ":sfind", and ":tabfind" commands do not
    currently work with 'path' items that contain a URL or use the double star
    with depth limiter (/usr/**2) or upward search (;) notations.
+
+==============================================================================
+12. Trusted Files						*trust*
+
+Nvim executes arbitrary code found on the filesystem if 'exrc' is enabled. To
+prevent executing malicious code, only "trusted files" are executed. You can
+mark a file as trusted or untrusted using the |:trust| command or the
+|vim.secure.read()| function.
+
+							*:trust* *E5570*
+:trust [++deny] [++remove] [file]
+
+			Manage trusted files. Without ++ options, :trust marks
+			the current buffer as trusted, keyed on a hash of its
+			contents. The trust list is stored on disk, Nvim will
+			re-use it after restarting.
+
+			[++deny] marks [file] (or current buffer if no [file]) as
+			untrusted: it will never be executed, 'exrc' will
+			ignore it.
+
+			[++remove] removes [file] (or current buffer if no
+			[file]) from the trust list. When the file is
+			discovered by 'exrc' or |vim.secure.read()|, the user
+			will be asked whether to trust or deny the file.
 
  vim:tw=78:ts=8:noet:ft=help:norl:

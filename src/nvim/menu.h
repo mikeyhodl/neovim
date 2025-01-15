@@ -1,13 +1,10 @@
-#ifndef NVIM_MENU_H
-#define NVIM_MENU_H
+#pragma once
 
-#include <stdbool.h>  // for bool
-
-#include "nvim/ex_cmds_defs.h"  // for exarg_T
-#include "nvim/menu_defs.h"
-#include "nvim/types.h"  // for char_u and expand_T
+#include "nvim/cmdexpand_defs.h"  // IWYU pragma: keep
+#include "nvim/ex_cmds_defs.h"  // IWYU pragma: keep
+#include "nvim/menu_defs.h"  // IWYU pragma: keep
+#include "nvim/types_defs.h"  // IWYU pragma: keep
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "menu.h.generated.h"
 #endif
-#endif  // NVIM_MENU_H

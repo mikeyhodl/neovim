@@ -2,12 +2,14 @@
 -- Test for submatch() on substitute().
 -- Test for *:s%* on :substitute.
 
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local feed, insert = helpers.feed, helpers.insert
-local exec = helpers.exec
-local clear, feed_command, expect = helpers.clear, helpers.feed_command, helpers.expect
-local eq, eval = helpers.eq, helpers.eval
+
+local feed, insert = n.feed, n.insert
+local exec = n.exec
+local clear, feed_command, expect = n.clear, n.feed_command, n.expect
+local eq, eval = t.eq, n.eval
 
 describe('substitute()', function()
   before_each(clear)
@@ -20,9 +22,14 @@ describe('substitute()', function()
   local function test_1_and_2()
     eq('AA', eval("substitute('A', 'A', '&&', '')"))
     eq('&', eval([[substitute('B', 'B', '\&', '')]]))
-    eq('C123456789987654321', eval([[substitute('C123456789', ]] ..
-      [['C\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)', ]] ..
-      [['\0\9\8\7\6\5\4\3\2\1', '')]]))
+    eq(
+      'C123456789987654321',
+      eval(
+        [[substitute('C123456789', ]]
+          .. [['C\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)', ]]
+          .. [['\0\9\8\7\6\5\4\3\2\1', '')]]
+      )
+    )
     eq('d', eval("substitute('D', 'D', 'd', '')"))
     eq('~', eval("substitute('E', 'E', '~', '')"))
     eq('~', eval([[substitute('F', 'F', '\~', '')]]))
@@ -61,10 +68,9 @@ describe('substitute()', function()
     feed_command('set magic&')
     eq('a\\a', eval([[substitute('aAa', 'A', '\="\\"', '')]]))
     eq('b\\\\b', eval([[substitute('bBb', 'B', '\="\\\\"', '')]]))
-    eq('c\rc', eval([[substitute('cCc', 'C', '\="]]..'\r'..[["', '')]]))
-    eq('d\\\rd', eval([[substitute('dDd', 'D', '\="\\]]..'\r'..[["', '')]]))
-    eq('e\\\\\re',
-      eval([[substitute('eEe', 'E', '\="\\\\]]..'\r'..[["', '')]]))
+    eq('c\rc', eval([[substitute('cCc', 'C', '\="]] .. '\r' .. [["', '')]]))
+    eq('d\\\rd', eval([[substitute('dDd', 'D', '\="\\]] .. '\r' .. [["', '')]]))
+    eq('e\\\\\re', eval([[substitute('eEe', 'E', '\="\\\\]] .. '\r' .. [["', '')]]))
     eq('f\\rf', eval([[substitute('fFf', 'F', '\="\\r"', '')]]))
     eq('j\\nj', eval([[substitute('jJj', 'J', '\="\\n"', '')]]))
     eq('k\rk', eval([[substitute('kKk', 'K', '\="\r"', '')]]))
@@ -73,39 +79,81 @@ describe('substitute()', function()
 
   it('with submatch() (TEST_4)', function()
     feed_command('set magic&')
-    eq('a\\a', eval([[substitute('aAa', 'A', ]] ..
-      [['\=substitute(submatch(0), ".", "\\", "")', '')]]))
-    eq('b\\b', eval([[substitute('bBb', 'B', ]] ..
-      [['\=substitute(submatch(0), ".", "\\\\", "")', '')]]))
-    eq('c\rc', eval([[substitute('cCc', 'C', ]] ..
-      [['\=substitute(submatch(0), ".", "]]..'\r'..[[", "")', '')]]))
-    eq('d\rd', eval([[substitute('dDd', 'D', ]] ..
-      [['\=substitute(submatch(0), ".", "\\]]..'\r'..[[", "")', '')]]))
-    eq('e\\\re', eval([[substitute('eEe', 'E', ]] ..
-      [['\=substitute(submatch(0), ".", "\\\\]]..'\r'..[[", "")', '')]]))
-    eq('f\rf', eval([[substitute('fFf', 'F', ]] ..
-      [['\=substitute(submatch(0), ".", "\\r", "")', '')]]))
-    eq('j\nj', eval([[substitute('jJj', 'J', ]] ..
-      [['\=substitute(submatch(0), ".", "\\n", "")', '')]]))
-    eq('k\rk', eval([[substitute('kKk', 'K', ]] ..
-      [['\=substitute(submatch(0), ".", "\r", "")', '')]]))
-    eq('l\nl', eval([[substitute('lLl', 'L', ]] ..
-      [['\=substitute(submatch(0), ".", "\n", "")', '')]]))
+    eq(
+      'a\\a',
+      eval([[substitute('aAa', 'A', ]] .. [['\=substitute(submatch(0), ".", "\\", "")', '')]])
+    )
+    eq(
+      'b\\b',
+      eval([[substitute('bBb', 'B', ]] .. [['\=substitute(submatch(0), ".", "\\\\", "")', '')]])
+    )
+    eq(
+      'c\rc',
+      eval(
+        [[substitute('cCc', 'C', ]]
+          .. [['\=substitute(submatch(0), ".", "]]
+          .. '\r'
+          .. [[", "")', '')]]
+      )
+    )
+    eq(
+      'd\rd',
+      eval(
+        [[substitute('dDd', 'D', ]]
+          .. [['\=substitute(submatch(0), ".", "\\]]
+          .. '\r'
+          .. [[", "")', '')]]
+      )
+    )
+    eq(
+      'e\\\re',
+      eval(
+        [[substitute('eEe', 'E', ]]
+          .. [['\=substitute(submatch(0), ".", "\\\\]]
+          .. '\r'
+          .. [[", "")', '')]]
+      )
+    )
+    eq(
+      'f\rf',
+      eval([[substitute('fFf', 'F', ]] .. [['\=substitute(submatch(0), ".", "\\r", "")', '')]])
+    )
+    eq(
+      'j\nj',
+      eval([[substitute('jJj', 'J', ]] .. [['\=substitute(submatch(0), ".", "\\n", "")', '')]])
+    )
+    eq(
+      'k\rk',
+      eval([[substitute('kKk', 'K', ]] .. [['\=substitute(submatch(0), ".", "\r", "")', '')]])
+    )
+    eq(
+      'l\nl',
+      eval([[substitute('lLl', 'L', ]] .. [['\=substitute(submatch(0), ".", "\n", "")', '')]])
+    )
   end)
 
   it('with submatch() (TEST_5)', function()
     feed_command('set magic&')
-    eq('A123456789987654321', eval([[substitute('A123456789', ]] ..
-      [['A\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)', ]] ..
-      [['\=submatch(0) . submatch(9) . submatch(8) . submatch(7) . ]] ..
-      [[submatch(6) . submatch(5) . submatch(4) . submatch(3) . ]] ..
-      [[submatch(2) . submatch(1)', '')]]))
-    eq("[['A123456789'], ['9'], ['8'], ['7'], ['6'], ['5'], ['4'], ['3'], " ..
-      "['2'], ['1']]", eval([[substitute('A123456789', ]] ..
-      [['A\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)', ]] ..
-      [['\=string([submatch(0, 1), submatch(9, 1), submatch(8, 1), ]] ..
-      [[submatch(7, 1), submatch(6, 1), submatch(5, 1), submatch(4, 1), ]] ..
-      [[submatch(3, 1), submatch(2, 1), submatch(1, 1)])', '')]]))
+    eq(
+      'A123456789987654321',
+      eval(
+        [[substitute('A123456789', ]]
+          .. [['A\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)', ]]
+          .. [['\=submatch(0) . submatch(9) . submatch(8) . submatch(7) . ]]
+          .. [[submatch(6) . submatch(5) . submatch(4) . submatch(3) . ]]
+          .. [[submatch(2) . submatch(1)', '')]]
+      )
+    )
+    eq(
+      "[['A123456789'], ['9'], ['8'], ['7'], ['6'], ['5'], ['4'], ['3'], " .. "['2'], ['1']]",
+      eval(
+        [[substitute('A123456789', ]]
+          .. [['A\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)', ]]
+          .. [['\=string([submatch(0, 1), submatch(9, 1), submatch(8, 1), ]]
+          .. [[submatch(7, 1), submatch(6, 1), submatch(5, 1), submatch(4, 1), ]]
+          .. [[submatch(3, 1), submatch(2, 1), submatch(1, 1)])', '')]]
+      )
+    )
   end)
 
   -- TEST_6 was about the 'cpoptions' flag / which was removed in pull request
@@ -115,8 +163,7 @@ describe('substitute()', function()
     feed_command('set magic&')
     eq('A\rA', eval("substitute('A\rA', 'A.', '\\=submatch(0)', '')"))
     eq('B\nB', eval([[substitute("B\nB", 'B.', '\=submatch(0)', '')]]))
-    eq("['B\n']B",
-      eval([[substitute("B\nB", 'B.', '\=string(submatch(0, 1))', '')]]))
+    eq("['B\n']B", eval([[substitute("B\nB", 'B.', '\=string(submatch(0, 1))', '')]]))
     eq('-abab', eval([[substitute('-bb', '\zeb', 'a', 'g')]]))
     eq('c-cbcbc', eval([[substitute('-bb', '\ze', 'c', 'g')]]))
   end)
@@ -145,9 +192,9 @@ describe(':substitute', function()
     feed_command('set magic&')
     feed_command([[1s/\(^\|,\)\ze\(,\|X\)/\1N/g]])
     feed_command([[2s/\(^\|,\)\ze\(,\|Y\)/\1N/gc]])
-    feed('a')  -- For the dialog of the previous :s command.
+    feed('a') -- For the dialog of the previous :s command.
     feed_command([[3s/\(^\|,\)\ze\(,\|Z\)/\1N/gc]])
-    feed('yy')  -- For the dialog of the previous :s command.
+    feed('yy') -- For the dialog of the previous :s command.
     expect([[
       N,,NX
       N,,NY
@@ -158,32 +205,25 @@ describe(':substitute', function()
     insert('xxx')
     feed_command('set magic&')
     feed_command('s/x/X/gc')
-    feed('yyq')  -- For the dialog of the previous :s command.
+    feed('yyq') -- For the dialog of the previous :s command.
     expect('XXx')
   end)
 
   it('first char is highlighted with confirmation dialog and empty match', function()
     local screen = Screen.new(60, 8)
-    screen:set_default_attr_ids({
-      [0] = {bold = true, foreground = Screen.colors.Blue},  -- NonText
-      [1] = {reverse = true},  -- IncSearch
-      [2] = {bold = true, foreground = Screen.colors.SeaGreen},  -- MoreMsg
-    })
-    screen:attach()
     exec([[
       set nohlsearch noincsearch
       call setline(1, ['one', 'two', 'three'])
     ]])
     feed(':%s/^/   /c<CR>')
     screen:expect([[
-      {1:o}ne                                                         |
+      {2:o}ne                                                         |
       two                                                         |
       three                                                       |
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {2:replace with     (y/n/a/q/l/^E/^Y)?}^                         |
+      {1:~                                                           }|*2
+      {3:                                                            }|
+      {6:replace with    ? (y)es/(n)o/(a)ll/(q)uit/(l)ast/scroll up(^}|
+      {6:E)/down(^Y)}^                                                 |
     ]])
   end)
 end)

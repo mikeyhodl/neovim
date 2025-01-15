@@ -1,9 +1,11 @@
 -- Test for jumping to a tag with 'hidden' set, with symbolic link in path of tag.
 -- This only works for Unix, because of the symbolic link.
 
-local helpers = require('test.functional.helpers')(after_each)
-local clear, feed, insert = helpers.clear, helpers.feed, helpers.insert
-local feed_command, expect = helpers.feed_command, helpers.expect
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear, feed, insert = n.clear, n.feed, n.insert
+local feed_command, expect = n.feed_command, n.expect
 
 describe('jump to a tag with hidden set', function()
   setup(clear)
@@ -23,7 +25,7 @@ describe('jump to a tag with hidden set', function()
     feed_command('set hidden')
 
     -- Create a link from test25.dir to the current directory.
-    if helpers.iswin() then
+    if t.is_os('win') then
       feed_command('!rd /q/s test25.dir')
       feed_command('!mklink /j test25.dir .')
     else
@@ -33,7 +35,7 @@ describe('jump to a tag with hidden set', function()
 
     -- Create tags.text, with the current directory name inserted.
     feed_command('/tags line')
-    feed_command('r !' .. (helpers.iswin() and 'cd' or 'pwd'))
+    feed_command('r !' .. (t.is_os('win') and 'cd' or 'pwd'))
     feed('d$/test<cr>')
     feed('hP:.w! tags.test<cr>')
 
@@ -44,7 +46,7 @@ describe('jump to a tag with hidden set', function()
     feed('G<C-]> x:yank a<cr>')
     feed_command("call delete('tags.test')")
     feed_command("call delete('Xxx')")
-    if helpers.iswin() then
+    if t.is_os('win') then
       feed_command('!rd /q test25.dir')
     else
       feed_command('!rm -f test25.dir')
@@ -56,6 +58,6 @@ describe('jump to a tag with hidden set', function()
     feed_command('$d')
 
     -- Assert buffer contents.
-    expect("#efine  SECTION_OFF  3")
+    expect('#efine  SECTION_OFF  3')
   end)
 end)

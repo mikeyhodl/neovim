@@ -1,8 +1,8 @@
-local helpers = require('test.functional.helpers')(after_each)
+local n = require('test.functional.testnvim')()
 
-local assert_alive = helpers.assert_alive
-local clear = helpers.clear
-local feed = helpers.feed
+local assert_alive = n.assert_alive
+local clear = n.clear
+local feed = n.feed
 
 describe("'tabstop' option", function()
   before_each(function()
@@ -11,7 +11,7 @@ describe("'tabstop' option", function()
 
   -- NOTE: Setting 'tabstop' to a big number reproduces crash #2838.
   -- Disallowing big 'tabstop' would not fix #2838, only hide it.
-  it("tabstop=<big-number> does not crash #2838", function()
+  it('tabstop=<big-number> does not crash #2838', function()
     -- Insert a <Tab> character for 'tabstop' to work with.
     feed('i<Tab><Esc>')
     -- Set 'tabstop' to a very high value.

@@ -3,14 +3,16 @@
 *CMakeLists.txt linguist-language=CMake
 
 runtime/doc/*   linguist-documentation
+runtime/doc/builtin.txt linguist-generated
+
+runtime/lua/vim/_meta/vimfn.lua linguist-generated
+runtime/lua/vim/_meta/vvars.lua linguist-generated
+runtime/lua/vim/_meta/api.lua linguist-generated
+runtime/lua/vim/_meta/api_keysets.lua linguist-generated
+runtime/lua/vim/_meta/options.lua linguist-generated
 
 src/xdiff/**    linguist-vendored
 src/cjson/**    linguist-vendored
 src/unicode/**  linguist-vendored
 
-src/nvim/testdir/test42.in diff
-
 .github/    export-ignore
-.travis.yml export-ignore
-codecov.yml export-ignore
-.builds/    export-ignore

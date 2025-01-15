@@ -1,28 +1,13 @@
-#ifndef NVIM_DECORATION_PROVIDER_H
-#define NVIM_DECORATION_PROVIDER_H
+#pragma once
 
-#include "nvim/buffer_defs.h"
+#include <stdbool.h>
 
-typedef struct {
-  NS ns_id;
-  bool active;
-  LuaRef redraw_start;
-  LuaRef redraw_buf;
-  LuaRef redraw_win;
-  LuaRef redraw_line;
-  LuaRef redraw_end;
-  LuaRef hl_def;
-  LuaRef spell_nav;
-  int hl_valid;
-  bool hl_cached;
-} DecorProvider;
+#include "nvim/decoration_defs.h"  // IWYU pragma: keep
+#include "nvim/macros_defs.h"
+#include "nvim/types_defs.h"  // IWYU pragma: keep
 
-typedef kvec_withinit_t(DecorProvider *, 4) DecorProviders;
-
-EXTERN bool provider_active INIT(= false);
+EXTERN bool provider_active INIT( = false);
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "decoration_provider.h.generated.h"
 #endif
-
-#endif  // NVIM_DECORATION_PROVIDER_H

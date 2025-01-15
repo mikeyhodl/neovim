@@ -1,15 +1,16 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear = helpers.clear
-local eq = helpers.eq
-local iswin = helpers.iswin
-local fnamemodify = helpers.funcs.fnamemodify
-local getcwd = helpers.funcs.getcwd
-local command = helpers.command
-local write_file = helpers.write_file
-local alter_slashes = helpers.alter_slashes
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear = n.clear
+local eq = t.eq
+local fnamemodify = n.fn.fnamemodify
+local getcwd = n.fn.getcwd
+local command = n.command
+local write_file = t.write_file
+local is_os = t.is_os
 
 local function eq_slashconvert(expected, got)
-  eq(alter_slashes(expected), alter_slashes(got))
+  eq(t.fix_slashes(expected), t.fix_slashes(got))
 end
 
 describe('fnamemodify()', function()
@@ -24,14 +25,14 @@ describe('fnamemodify()', function()
   end)
 
   it('handles the root path', function()
-    local root = helpers.pathroot()
+    local root = n.pathroot()
     eq(root, fnamemodify([[/]], ':p:h'))
     eq(root, fnamemodify([[/]], ':p'))
-    if iswin() then
+    if is_os('win') then
       eq(root, fnamemodify([[\]], ':p:h'))
       eq(root, fnamemodify([[\]], ':p'))
       command('set shellslash')
-      root = string.sub(root, 1, -2)..'/'
+      root = string.sub(root, 1, -2) .. '/'
       eq(root, fnamemodify([[\]], ':p:h'))
       eq(root, fnamemodify([[\]], ':p'))
       eq(root, fnamemodify([[/]], ':p:h'))
@@ -44,7 +45,7 @@ describe('fnamemodify()', function()
   end)
 
   it('handles examples from ":help filename-modifiers"', function()
-    local filename = "src/version.c"
+    local filename = 'src/version.c'
     local cwd = getcwd()
 
     eq_slashconvert(cwd .. '/src/version.c', fnamemodify(filename, ':p'))
@@ -70,7 +71,7 @@ describe('fnamemodify()', function()
   end)
 
   it('handles advanced examples from ":help filename-modifiers"', function()
-    local filename = "src/version.c.gz"
+    local filename = 'src/version.c.gz'
 
     eq('gz', fnamemodify(filename, ':e'))
     eq('c.gz', fnamemodify(filename, ':e:e'))
@@ -114,7 +115,7 @@ describe('fnamemodify()', function()
   it('handles shell escape', function()
     local expected
 
-    if iswin() then
+    if is_os('win') then
       -- we expand with double-quotes on Windows
       expected = [["hello there! quote ' newline]] .. '\n' .. [["]]
     else

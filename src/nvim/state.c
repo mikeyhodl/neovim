@@ -1,32 +1,42 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+#include <stdbool.h>
+#include <string.h>
 
-#include <assert.h>
-
-#include "klib/kvec.h"
-#include "nvim/ascii.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/autocmd.h"
+#include "nvim/autocmd_defs.h"
+#include "nvim/buffer_defs.h"
 #include "nvim/drawscreen.h"
 #include "nvim/eval.h"
-#include "nvim/ex_docmd.h"
+#include "nvim/eval/typval.h"
+#include "nvim/eval/typval_defs.h"
+#include "nvim/event/defs.h"
+#include "nvim/event/loop.h"
+#include "nvim/event/multiqueue.h"
+#include "nvim/ex_getln.h"
 #include "nvim/getchar.h"
+#include "nvim/globals.h"
 #include "nvim/insexpand.h"
+#include "nvim/keycodes.h"
 #include "nvim/log.h"
+#include "nvim/macros_defs.h"
 #include "nvim/main.h"
+#include "nvim/memory.h"
 #include "nvim/option.h"
-#include "nvim/option_defs.h"
+#include "nvim/option_vars.h"
 #include "nvim/os/input.h"
 #include "nvim/state.h"
+#include "nvim/strings.h"
+#include "nvim/types_defs.h"
 #include "nvim/ui.h"
-#include "nvim/vim.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "state.c.generated.h"
 #endif
 
 void state_enter(VimState *s)
+  FUNC_ATTR_NONNULL_ALL
 {
-  for (;;) {
+  while (true) {
     int check_result = s->check ? s->check(s) : 1;
 
     if (!check_result) {
@@ -51,23 +61,26 @@ getkey:
     if (vpeekc() != NUL || typebuf.tb_len > 0) {
       key = safe_vgetc();
     } else if (!multiqueue_empty(main_loop.events)) {
+      // No input available and processing events may take time, flush now.
+      ui_flush();
       // Event was made available after the last multiqueue_process_events call
       key = K_EVENT;
     } else {
-      // Duplicate display updating logic in vgetorpeek()
-      if (((State & MODE_INSERT) != 0 || p_lz) && (State & MODE_CMDLINE) == 0
-          && must_redraw != 0 && !need_wait_return) {
+      // Ensure the screen is fully updated before blocking for input. Because of the duality of
+      // redraw_later, this can't be done in command-line or when waiting for "Press ENTER".
+      // In many of those cases the redraw is expected AFTER the key press, while normally it should
+      // update the screen immediately.
+      if (must_redraw != 0 && !need_wait_return && (State & MODE_CMDLINE) == 0) {
         update_screen();
         setcursor();  // put cursor back where it belongs
       }
-      // Flush screen updates before blocking
+      // Flush screen updates before blocking.
       ui_flush();
-      // Call `os_inchar` directly to block for events or user input without
-      // consuming anything from `input_buffer`(os/input.c) or calling the
-      // mapping engine.
-      (void)os_inchar(NULL, 0, -1, typebuf.tb_change_cnt, main_loop.events);
+      // Call `input_get` directly to block for events or user input without consuming anything from
+      // `os/input.c:input_buffer` or calling the mapping engine.
+      input_get(NULL, 0, -1, typebuf.tb_change_cnt, main_loop.events);
       // If an event was put into the queue, we send K_EVENT directly.
-      if (!multiqueue_empty(main_loop.events)) {
+      if (!input_available() && !multiqueue_empty(main_loop.events)) {
         key = K_EVENT;
       } else {
         goto getkey;
@@ -81,8 +94,9 @@ getkey:
       may_sync_undo();
     }
 
-#if MIN_LOG_LEVEL <= LOGLVL_DBG
-    log_key(LOGLVL_DBG, key);
+#ifdef NVIM_LOG_DEBUG
+    char *keyname = key == K_EVENT ? "K_EVENT" : get_special_key_name(key, mod_mask);
+    DLOG("input: %s", keyname);
 #endif
 
     int execute_result = s->execute(s, key);
@@ -122,19 +136,25 @@ void state_handle_k_event(void)
 }
 
 /// Return true if in the current mode we need to use virtual.
-bool virtual_active(void)
+bool virtual_active(win_T *wp)
 {
-  unsigned int cur_ve_flags = get_ve_flags();
-
   // While an operator is being executed we return "virtual_op", because
   // VIsual_active has already been reset, thus we can't check for "block"
   // being used.
   if (virtual_op != kNone) {
     return virtual_op;
   }
-  return cur_ve_flags == VE_ALL
-         || ((cur_ve_flags & VE_BLOCK) && VIsual_active && VIsual_mode == Ctrl_V)
-         || ((cur_ve_flags & VE_INSERT) && (State & MODE_INSERT));
+
+  // In Terminal mode the cursor can be positioned anywhere by the application
+  if (State & MODE_TERMINAL) {
+    return true;
+  }
+
+  unsigned cur_ve_flags = get_ve_flags(wp);
+
+  return cur_ve_flags == kOptVeFlagAll
+         || ((cur_ve_flags & kOptVeFlagBlock) && VIsual_active && VIsual_mode == Ctrl_V)
+         || ((cur_ve_flags & kOptVeFlagInsert) && (State & MODE_INSERT));
 }
 
 /// MODE_VISUAL, MODE_SELECT and MODE_OP_PENDING State are never set, they are
@@ -160,20 +180,12 @@ int get_real_state(void)
 /// The first character represents the major mode, the following ones the minor
 /// ones.
 void get_mode(char *buf)
+  FUNC_ATTR_NONNULL_ALL
 {
   int i = 0;
 
-  if (VIsual_active) {
-    if (VIsual_select) {
-      buf[i++] = (char)(VIsual_mode + 's' - 'v');
-    } else {
-      buf[i++] = (char)VIsual_mode;
-      if (restart_VIsual_select) {
-        buf[i++] = 's';
-      }
-    }
-  } else if (State == MODE_HITRETURN || State == MODE_ASKMORE || State == MODE_SETWSIZE
-             || State == MODE_CONFIRM) {
+  if (State == MODE_HITRETURN || State == MODE_ASKMORE
+      || State == MODE_SETWSIZE || State == MODE_CONFIRM) {
     buf[i++] = 'r';
     if (State == MODE_ASKMORE) {
       buf[i++] = 'm';
@@ -203,8 +215,20 @@ void get_mode(char *buf)
     if (exmode_active) {
       buf[i++] = 'v';
     }
+    if ((State & MODE_CMDLINE) && cmdline_overstrike()) {
+      buf[i++] = 'r';
+    }
   } else if (State & MODE_TERMINAL) {
     buf[i++] = 't';
+  } else if (VIsual_active) {
+    if (VIsual_select) {
+      buf[i++] = (char)(VIsual_mode + 's' - 'v');
+    } else {
+      buf[i++] = (char)VIsual_mode;
+      if (restart_VIsual_select) {
+        buf[i++] = 's';
+      }
+    }
   } else {
     buf[i++] = 'n';
     if (finish_op) {
@@ -216,8 +240,7 @@ void get_mode(char *buf)
       if (restart_edit == 'I') {
         buf[i++] = 'T';
       }
-    } else if (restart_edit == 'I' || restart_edit == 'R'
-               || restart_edit == 'V') {
+    } else if (restart_edit == 'I' || restart_edit == 'R' || restart_edit == 'V') {
       buf[i++] = 'i';
       buf[i++] = (char)restart_edit;
     }
@@ -256,4 +279,51 @@ void may_trigger_modechanged(void)
   STRCPY(last_mode, curr_mode);
 
   restore_v_event(v_event, &save_v_event);
+}
+
+/// When true in a safe state when starting to wait for a character.
+static bool was_safe = false;
+
+/// Return whether currently it is safe, assuming it was safe before (high level
+/// state didn't change).
+static bool is_safe_now(void)
+{
+  return stuff_empty()
+         && typebuf.tb_len == 0
+         && !using_script()
+         && !global_busy
+         && !debug_mode;
+}
+
+/// Trigger SafeState if currently in a safe state, that is "safe" is true and
+/// there is no typeahead.
+void may_trigger_safestate(bool safe)
+{
+  bool is_safe = safe && is_safe_now();
+
+  if (was_safe != is_safe) {
+    // Only log when the state changes, otherwise it happens at nearly
+    // every key stroke.
+    DLOG(is_safe ? "SafeState: Start triggering" : "SafeState: Stop triggering");
+  }
+  if (is_safe) {
+    apply_autocmds(EVENT_SAFESTATE, NULL, NULL, false, curbuf);
+  }
+  was_safe = is_safe;
+}
+
+/// Something changed which causes the state possibly to be unsafe, e.g. a
+/// character was typed.  It will remain unsafe until the next call to
+/// may_trigger_safestate().
+void state_no_longer_safe(const char *reason)
+{
+  if (was_safe && reason != NULL) {
+    DLOG("SafeState reset: %s", reason);
+  }
+  was_safe = false;
+}
+
+bool get_was_safe_state(void)
+{
+  return was_safe;
 }

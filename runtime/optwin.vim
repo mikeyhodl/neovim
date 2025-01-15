@@ -1,7 +1,8 @@
 " These commands create the option window.
 "
-" Maintainer:	Bram Moolenaar <Bram@vim.org>
-" Last Change:	2022 Oct 28
+" Maintainer:	The Vim Project <https://github.com/vim/vim>
+" Last Change:	2024 Dec 07
+" Former Maintainer:	Bram Moolenaar <Bram@vim.org>
 
 " If there already is an option window, jump to that one.
 let buf = bufnr('option-window')
@@ -106,11 +107,7 @@ func <SID>Update(lnum, line, local, thiswin)
   else
     let name = substitute(a:line, '^ \tset \(no\)\=\([a-z]*\).*', '\2', "")
   endif
-  if name == "pt" && &pt =~ "\x80"
-    let val = <SID>PTvalue()
-  else
-    let val = escape(eval('&' . name), " \t\\\"|")
-  endif
+  let val = escape(eval('&' . name), " \t\\\"|")
   if a:local
     exe a:thiswin . "wincmd w"
   endif
@@ -211,14 +208,6 @@ func <SID>Header(text)
   let s:lnum = s:lnum + 1
 endfunc
 
-" Get the value of 'pastetoggle'.  It could be a special key.
-func <SID>PTvalue()
-  redir @a
-  silent set pt
-  redir END
-  return substitute(@a, '[^=]*=\(.*\)', '\1', "")
-endfunc
-
 " Restore the previous value of 'cpoptions' here, it's used below.
 let &cpo = s:cpo_save
 
@@ -232,12 +221,6 @@ call <SID>AddOption("cpoptions", gettext("list of flags to specify Vi compatibil
 call <SID>OptionG("cpo", &cpo)
 call <SID>AddOption("paste", gettext("paste mode, insert typed text literally"))
 call <SID>BinOptionG("paste", &paste)
-call <SID>AddOption("pastetoggle", gettext("key sequence to toggle paste mode"))
-if &pt =~ "\x80"
-  call append("$", " \tset pt=" . <SID>PTvalue())
-else
-  call <SID>OptionG("pt", &pt)
-endif
 call <SID>AddOption("runtimepath", gettext("list of directories used for runtime files and plugins"))
 call <SID>OptionG("rtp", &rtp)
 call <SID>AddOption("packpath", gettext("list of directories used for plugin packages"))
@@ -323,6 +306,9 @@ call <SID>Header(gettext("displaying text"))
 call <SID>AddOption("scroll", gettext("number of lines to scroll for CTRL-U and CTRL-D"))
 call append("$", "\t" .. s:local_to_window)
 call <SID>OptionL("scr")
+call <SID>AddOption("smoothscroll", gettext("scroll by screen line"))
+call append("$", "\t" .. s:local_to_window)
+call <SID>BinOptionL("sms")
 call <SID>AddOption("scrolloff", gettext("number of screen lines to show around the cursor"))
 call append("$", " \tset so=" . &so)
 call <SID>AddOption("wrap", gettext("long lines wrap"))
@@ -452,9 +438,13 @@ call <SID>Header(gettext("multiple windows"))
 call <SID>AddOption("laststatus", gettext("0, 1, 2 or 3; when to use a status line for the last window"))
 call append("$", " \tset ls=" . &ls)
 if has("statusline")
+  call <SID>AddOption("statuscolumn", gettext("custom format for the status column"))
+  call append("$", "\t" .. s:local_to_window)
+  call <SID>OptionG("stc", &stc)
   call <SID>AddOption("statusline", gettext("alternate format to be used for a status line"))
   call <SID>OptionG("stl", &stl)
 endif
+call append("$", "\t" .. s:local_to_window)
 call <SID>AddOption("equalalways", gettext("make all windows the same size when adding/removing windows"))
 call <SID>BinOptionG("ea", &ea)
 call <SID>AddOption("eadirection", gettext("in which direction 'equalalways' works: \"ver\", \"hor\" or \"both\""))
@@ -463,6 +453,8 @@ call <SID>AddOption("winheight", gettext("minimal number of lines used for the c
 call append("$", " \tset wh=" . &wh)
 call <SID>AddOption("winminheight", gettext("minimal number of lines used for any window"))
 call append("$", " \tset wmh=" . &wmh)
+call <SID>AddOption("winfixbuf", gettext("keep window focused on a single buffer"))
+call <SID>OptionG("wfb", &wfb)
 call <SID>AddOption("winfixheight", gettext("keep the height of the window"))
 call append("$", "\t" .. s:local_to_window)
 call <SID>BinOptionL("wfh")
@@ -491,7 +483,7 @@ call <SID>OptionG("swb", &swb)
 call <SID>AddOption("splitbelow", gettext("a new window is put below the current one"))
 call <SID>BinOptionG("sb", &sb)
 call <SID>AddOption("splitkeep", gettext("determines scroll behavior for split windows"))
-call <SID>BinOptionG("spk", &spk)
+call <SID>OptionG("spk", &spk)
 call <SID>AddOption("splitright", gettext("a new window is put right of the current one"))
 call <SID>BinOptionG("spr", &spr)
 call <SID>AddOption("scrollbind", gettext("this window scrolls together with other bound windows"))
@@ -515,6 +507,8 @@ endif
 call <SID>Header(gettext("multiple tab pages"))
 call <SID>AddOption("showtabline", gettext("0, 1 or 2; when to use a tab pages line"))
 call append("$", " \tset stal=" . &stal)
+call <SID>AddOption("tabclose", gettext("behaviour when closing tab pages: left, uselast or empty"))
+call append("$", " \tset tcl=" . &tcl)
 call <SID>AddOption("tabpagemax", gettext("maximum number of tab pages to open for -p and \"tab all\""))
 call append("$", " \tset tpm=" . &tpm)
 call <SID>AddOption("tabline", gettext("custom tab pages line"))
@@ -627,39 +621,19 @@ if has("gui")
   endif
 endif
 
-if has("printer")
-  call <SID>Header(gettext("printing"))
-  call <SID>AddOption("printoptions", gettext("list of items that control the format of :hardcopy output"))
-  call <SID>OptionG("popt", &popt)
-  call <SID>AddOption("printdevice", gettext("name of the printer to be used for :hardcopy"))
-  call <SID>OptionG("pdev", &pdev)
-  if has("postscript")
-    call <SID>AddOption("printexpr", gettext("expression used to print the PostScript file for :hardcopy"))
-    call <SID>OptionG("pexpr", &pexpr)
-  endif
-  call <SID>AddOption("printfont", gettext("name of the font to be used for :hardcopy"))
-  call <SID>OptionG("pfn", &pfn)
-  call <SID>AddOption("printheader", gettext("format of the header used for :hardcopy"))
-  call <SID>OptionG("pheader", &pheader)
-  if has("postscript")
-    call <SID>AddOption("printencoding", gettext("encoding used to print the PostScript file for :hardcopy"))
-    call <SID>OptionG("penc", &penc)
-  endif
-  call <SID>AddOption("printmbcharset", gettext("the CJK character set to be used for CJK output from :hardcopy"))
-  call <SID>OptionG("pmbcs", &pmbcs)
-  call <SID>AddOption("printmbfont", gettext("list of font names to be used for CJK output from :hardcopy"))
-  call <SID>OptionG("pmbfn", &pmbfn)
-endif
-
 call <SID>Header(gettext("messages and info"))
 call <SID>AddOption("terse", gettext("add 's' flag in 'shortmess' (don't show search message)"))
 call <SID>BinOptionG("terse", &terse)
 call <SID>AddOption("shortmess", gettext("list of flags to make messages shorter"))
 call <SID>OptionG("shm", &shm)
-call <SID>AddOption("showcmd", gettext("show (partial) command keys in the status line"))
+call <SID>AddOption("messagesopt", gettext("options for outputting messages"))
+call <SID>OptionG("mopt", &mopt)
+call <SID>AddOption("showcmd", gettext("show (partial) command keys in location given by 'showcmdloc'"))
 let &sc = s:old_sc
 call <SID>BinOptionG("sc", &sc)
 set nosc
+call <SID>AddOption("showcmdloc", gettext("location where to show the (partial) command keys for 'showcmd'"))
+  call <SID>OptionG("sloc", &sloc)
 call <SID>AddOption("showmode", gettext("display the current mode in the status line"))
 call <SID>BinOptionG("smd", &smd)
 call <SID>AddOption("ruler", gettext("show cursor position below each window"))
@@ -753,7 +727,9 @@ if has("insert_expand")
   call append("$", "\t" .. s:local_to_buffer)
   call <SID>OptionL("cpt")
   call <SID>AddOption("completeopt", gettext("whether to use a popup menu for Insert mode completion"))
-  call <SID>OptionG("cot", &cot)
+  call <SID>OptionL("cot")
+  call <SID>AddOption("completeitemalign", gettext("popup menu item align order"))
+  call <SID>OptionG("cia", &cia)
   call <SID>AddOption("pumheight", gettext("maximum height of the popup menu"))
   call <SID>OptionG("ph", &ph)
   call <SID>AddOption("pumwidth", gettext("minimum width of the popup menu"))

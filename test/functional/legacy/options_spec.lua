@@ -1,10 +1,12 @@
--- See also: src/nvim/testdir/test_options.vim
-local helpers = require('test.functional.helpers')(after_each)
-local command, clear = helpers.command, helpers.clear
-local source, expect = helpers.source, helpers.expect
-local exc_exec = helpers.exc_exec;
-local matches = helpers.matches;
+-- See also: test/old/testdir/test_options.vim
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
+
+local command, clear = n.command, n.clear
+local source, expect = n.source, n.expect
+local exc_exec = n.exc_exec
+local matches = t.matches
 
 describe('options', function()
   setup(clear)
@@ -30,8 +32,7 @@ describe('set', function()
   end)
 
   it('winminheight works', function()
-    local screen = Screen.new(20, 11)
-    screen:attach()
+    local _ = Screen.new(20, 11)
     source([[
       set wmh=0 stal=2
       below sp | wincmd _
@@ -43,8 +44,7 @@ describe('set', function()
   end)
 
   it('winminheight works with tabline', function()
-    local screen = Screen.new(20, 11)
-    screen:attach()
+    local _ = Screen.new(20, 11)
     source([[
       set wmh=0 stal=2
       split
@@ -58,7 +58,6 @@ describe('set', function()
 
   it('scroll works', function()
     local screen = Screen.new(42, 16)
-    screen:attach()
     source([[
       set scroll=2
       set laststatus=2
@@ -66,21 +65,11 @@ describe('set', function()
     command('verbose set scroll?')
     screen:expect([[
                                                 |
-      ~                                         |
-      ~                                         |
-      ~                                         |
-      ~                                         |
-      ~                                         |
-      ~                                         |
-      ~                                         |
-      ~                                         |
-      ~                                         |
-      ~                                         |
-      ~                                         |
-                                                |
+      {1:~                                         }|*11
+      {3:                                          }|
         scroll=7                                |
               Last set from changed window size |
-      Press ENTER or type command to continue^   |
+      {6:Press ENTER or type command to continue}^   |
     ]])
   end)
 

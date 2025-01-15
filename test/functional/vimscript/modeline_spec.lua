@@ -1,9 +1,11 @@
-local helpers = require('test.functional.helpers')(after_each)
-local assert_alive = helpers.assert_alive
-local clear, command, write_file = helpers.clear, helpers.command, helpers.write_file
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-describe("modeline", function()
-  local tempfile = helpers.tmpname()
+local assert_alive = n.assert_alive
+local clear, command, write_file = n.clear, n.command, t.write_file
+
+describe('modeline', function()
+  local tempfile = t.tmpname()
   before_each(clear)
 
   after_each(function()

@@ -1,31 +1,40 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear, feed_command = helpers.clear, helpers.feed_command
-local feed, next_msg, eq = helpers.feed, helpers.next_msg, helpers.eq
-local command = helpers.command
-local expect = helpers.expect
-local curbuf_contents = helpers.curbuf_contents
-local meths = helpers.meths
-local exec_lua = helpers.exec_lua
-local write_file = helpers.write_file
-local funcs = helpers.funcs
-local eval = helpers.eval
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
+
+local clear, feed_command = n.clear, n.feed_command
+local feed, next_msg, eq = n.feed, n.next_msg, t.eq
+local command = n.command
+local expect = n.expect
+local curbuf_contents = n.curbuf_contents
+local api = n.api
+local exec_lua = n.exec_lua
+local write_file = t.write_file
+local fn = n.fn
+local eval = n.eval
 
 before_each(clear)
 
 describe('mappings', function()
   local add_mapping = function(mapping, send)
-    local cmd = "nnoremap "..mapping.." :call rpcnotify(1, 'mapped', '"
-                ..send:gsub('<', '<lt>').."')<cr>"
+    local cmd = 'nnoremap '
+      .. mapping
+      .. " :call rpcnotify(1, 'mapped', '"
+      .. send:gsub('<', '<lt>')
+      .. "')<cr>"
     feed_command(cmd)
   end
 
   local check_mapping = function(mapping, expected)
     feed(mapping)
-    eq({'notification', 'mapped', {expected}}, next_msg())
+    eq({ 'notification', 'mapped', { expected } }, next_msg())
   end
 
   before_each(function()
+    add_mapping('<A-l>', '<A-l>')
+    add_mapping('<A-L>', '<A-L>')
+    add_mapping('<D-l>', '<D-l>')
+    add_mapping('<D-L>', '<D-L>')
     add_mapping('<C-L>', '<C-L>')
     add_mapping('<C-S-L>', '<C-S-L>')
     add_mapping('<s-up>', '<s-up>')
@@ -35,30 +44,40 @@ describe('mappings', function()
     add_mapping('<c-s-a-d-up>', '<c-s-a-d-up>')
     add_mapping('<c-d-a>', '<c-d-a>')
     add_mapping('<d-1>', '<d-1>')
-    add_mapping('<khome>','<khome>')
-    add_mapping('<kup>','<kup>')
-    add_mapping('<kpageup>','<kpageup>')
-    add_mapping('<kleft>','<kleft>')
-    add_mapping('<korigin>','<korigin>')
-    add_mapping('<kright>','<kright>')
-    add_mapping('<kend>','<kend>')
-    add_mapping('<kdown>','<kdown>')
-    add_mapping('<kpagedown>','<kpagedown>')
-    add_mapping('<kinsert>','<kinsert>')
-    add_mapping('<kdel>','<kdel>')
-    add_mapping('<kdivide>','<kdivide>')
-    add_mapping('<kmultiply>','<kmultiply>')
-    add_mapping('<kminus>','<kminus>')
-    add_mapping('<kplus>','<kplus>')
-    add_mapping('<kenter>','<kenter>')
-    add_mapping('<kcomma>','<kcomma>')
-    add_mapping('<kequal>','<kequal>')
-    add_mapping('<f38>','<f38>')
-    add_mapping('<f63>','<f63>')
+    add_mapping('<khome>', '<khome>')
+    add_mapping('<kup>', '<kup>')
+    add_mapping('<kpageup>', '<kpageup>')
+    add_mapping('<kleft>', '<kleft>')
+    add_mapping('<korigin>', '<korigin>')
+    add_mapping('<kright>', '<kright>')
+    add_mapping('<kend>', '<kend>')
+    add_mapping('<kdown>', '<kdown>')
+    add_mapping('<kpagedown>', '<kpagedown>')
+    add_mapping('<kinsert>', '<kinsert>')
+    add_mapping('<kdel>', '<kdel>')
+    add_mapping('<kdivide>', '<kdivide>')
+    add_mapping('<kmultiply>', '<kmultiply>')
+    add_mapping('<kminus>', '<kminus>')
+    add_mapping('<kplus>', '<kplus>')
+    add_mapping('<kenter>', '<kenter>')
+    add_mapping('<kcomma>', '<kcomma>')
+    add_mapping('<kequal>', '<kequal>')
+    add_mapping('<f38>', '<f38>')
+    add_mapping('<f63>', '<f63>')
   end)
 
   it('ok', function()
+    check_mapping('<A-l>', '<A-l>')
+    check_mapping('<A-L>', '<A-L>')
+    check_mapping('<A-S-l>', '<A-L>')
+    check_mapping('<A-S-L>', '<A-L>')
+    check_mapping('<D-l>', '<D-l>')
+    check_mapping('<D-L>', '<D-L>')
+    check_mapping('<D-S-l>', '<D-L>')
+    check_mapping('<D-S-L>', '<D-L>')
+    check_mapping('<C-l>', '<C-L>')
     check_mapping('<C-L>', '<C-L>')
+    check_mapping('<C-S-l>', '<C-S-L>')
     check_mapping('<C-S-L>', '<C-S-L>')
     check_mapping('<s-up>', '<s-up>')
     check_mapping('<c-s-up>', '<c-s-up>')
@@ -75,44 +94,44 @@ describe('mappings', function()
     check_mapping('<c-d-a>', '<c-d-a>')
     check_mapping('<d-c-a>', '<c-d-a>')
     check_mapping('<d-1>', '<d-1>')
-    check_mapping('<khome>','<khome>')
-    check_mapping('<KP7>','<khome>')
-    check_mapping('<kup>','<kup>')
-    check_mapping('<KP8>','<kup>')
-    check_mapping('<kpageup>','<kpageup>')
-    check_mapping('<KP9>','<kpageup>')
-    check_mapping('<kleft>','<kleft>')
-    check_mapping('<KP4>','<kleft>')
-    check_mapping('<korigin>','<korigin>')
-    check_mapping('<KP5>','<korigin>')
-    check_mapping('<kright>','<kright>')
-    check_mapping('<KP6>','<kright>')
-    check_mapping('<kend>','<kend>')
-    check_mapping('<KP1>','<kend>')
-    check_mapping('<kdown>','<kdown>')
-    check_mapping('<KP2>','<kdown>')
-    check_mapping('<kpagedown>','<kpagedown>')
-    check_mapping('<KP3>','<kpagedown>')
-    check_mapping('<kinsert>','<kinsert>')
-    check_mapping('<KP0>','<kinsert>')
-    check_mapping('<kdel>','<kdel>')
-    check_mapping('<KPPeriod>','<kdel>')
-    check_mapping('<kdivide>','<kdivide>')
-    check_mapping('<KPDiv>','<kdivide>')
-    check_mapping('<kmultiply>','<kmultiply>')
-    check_mapping('<KPMult>','<kmultiply>')
-    check_mapping('<kminus>','<kminus>')
-    check_mapping('<KPMinus>','<kminus>')
-    check_mapping('<kplus>','<kplus>')
-    check_mapping('<KPPlus>','<kplus>')
-    check_mapping('<kenter>','<kenter>')
-    check_mapping('<KPEnter>','<kenter>')
-    check_mapping('<kcomma>','<kcomma>')
-    check_mapping('<KPComma>','<kcomma>')
-    check_mapping('<kequal>','<kequal>')
-    check_mapping('<KPEquals>','<kequal>')
-    check_mapping('<f38>','<f38>')
-    check_mapping('<f63>','<f63>')
+    check_mapping('<khome>', '<khome>')
+    check_mapping('<KP7>', '<khome>')
+    check_mapping('<kup>', '<kup>')
+    check_mapping('<KP8>', '<kup>')
+    check_mapping('<kpageup>', '<kpageup>')
+    check_mapping('<KP9>', '<kpageup>')
+    check_mapping('<kleft>', '<kleft>')
+    check_mapping('<KP4>', '<kleft>')
+    check_mapping('<korigin>', '<korigin>')
+    check_mapping('<KP5>', '<korigin>')
+    check_mapping('<kright>', '<kright>')
+    check_mapping('<KP6>', '<kright>')
+    check_mapping('<kend>', '<kend>')
+    check_mapping('<KP1>', '<kend>')
+    check_mapping('<kdown>', '<kdown>')
+    check_mapping('<KP2>', '<kdown>')
+    check_mapping('<kpagedown>', '<kpagedown>')
+    check_mapping('<KP3>', '<kpagedown>')
+    check_mapping('<kinsert>', '<kinsert>')
+    check_mapping('<KP0>', '<kinsert>')
+    check_mapping('<kdel>', '<kdel>')
+    check_mapping('<KPPeriod>', '<kdel>')
+    check_mapping('<kdivide>', '<kdivide>')
+    check_mapping('<KPDiv>', '<kdivide>')
+    check_mapping('<kmultiply>', '<kmultiply>')
+    check_mapping('<KPMult>', '<kmultiply>')
+    check_mapping('<kminus>', '<kminus>')
+    check_mapping('<KPMinus>', '<kminus>')
+    check_mapping('<kplus>', '<kplus>')
+    check_mapping('<KPPlus>', '<kplus>')
+    check_mapping('<kenter>', '<kenter>')
+    check_mapping('<KPEnter>', '<kenter>')
+    check_mapping('<kcomma>', '<kcomma>')
+    check_mapping('<KPComma>', '<kcomma>')
+    check_mapping('<kequal>', '<kequal>')
+    check_mapping('<KPEquals>', '<kequal>')
+    check_mapping('<f38>', '<f38>')
+    check_mapping('<f63>', '<f63>')
   end)
 
   it('support meta + multibyte char mapping', function()
@@ -151,7 +170,7 @@ describe('input split utf sequences', function()
   it('ok', function()
     local str = '►'
     feed('i' .. str:sub(1, 1))
-    helpers.sleep(10)
+    vim.uv.sleep(10)
     feed(str:sub(2, 3))
     expect('►')
   end)
@@ -160,7 +179,7 @@ describe('input split utf sequences', function()
     command('inoremap ► E296BA')
     local str = '►'
     feed('i' .. str:sub(1, 1))
-    helpers.sleep(10)
+    vim.uv.sleep(10)
     feed(str:sub(2, 3))
     expect('E296BA')
   end)
@@ -241,7 +260,7 @@ it('Ctrl-6 is Ctrl-^ vim-patch:8.1.2333', function()
   command('split aaa')
   command('edit bbb')
   feed('<C-6>')
-  eq('aaa', funcs.bufname())
+  eq('aaa', fn.bufname())
 end)
 
 it('c_CTRL-R_CTRL-R, i_CTRL-R_CTRL-R, i_CTRL-G_CTRL-K work properly vim-patch:8.1.2346', function()
@@ -262,34 +281,21 @@ it('c_CTRL-R_CTRL-R, i_CTRL-R_CTRL-R, i_CTRL-G_CTRL-K work properly vim-patch:8.
 end)
 
 it('typing a simplifiable key at hit-enter prompt triggers mapping vim-patch:8.2.0839', function()
-  local screen = Screen.new(60,8)
-  screen:set_default_attr_ids({
-    [1] = {bold = true, foreground = Screen.colors.Blue},  -- NonText
-    [2] = {bold = true, reverse = true},  -- MsgSeparator
-    [3] = {bold = true, foreground = Screen.colors.SeaGreen},  -- MoreMsg
-  })
-  screen:attach()
+  local screen = Screen.new(60, 8)
   command([[nnoremap <C-6> <Cmd>echo 'hit ctrl-6'<CR>]])
   feed_command('ls')
   screen:expect([[
                                                                 |
-    {1:~                                                           }|
-    {1:~                                                           }|
-    {1:~                                                           }|
-    {2:                                                            }|
+    {1:~                                                           }|*3
+    {3:                                                            }|
     :ls                                                         |
       1 %a   "[No Name]"                    line 1              |
-    {3:Press ENTER or type command to continue}^                     |
+    {6:Press ENTER or type command to continue}^                     |
   ]])
   feed('<C-6>')
   screen:expect([[
     ^                                                            |
-    {1:~                                                           }|
-    {1:~                                                           }|
-    {1:~                                                           }|
-    {1:~                                                           }|
-    {1:~                                                           }|
-    {1:~                                                           }|
+    {1:~                                                           }|*6
     hit ctrl-6                                                  |
   ]])
 end)
@@ -307,7 +313,7 @@ it('unsimplified mapping works when there was a partial match vim-patch:8.2.4504
   command('nnoremap <C-J> a')
   command('nnoremap <NL> x')
   command('nnoremap <C-J>x <Nop>')
-  funcs.setline(1, 'x')
+  fn.setline(1, 'x')
   -- CTRL-J b should have trigger the <C-J> mapping and then insert "b"
   feed('<C-J>b<Esc>')
   expect('xb')
@@ -319,97 +325,82 @@ describe('input non-printable chars', function()
   end)
 
   it("doesn't crash when echoing them back", function()
-    write_file("Xtest-overwrite", [[foobar]])
-    local screen = Screen.new(60,8)
-    screen:set_default_attr_ids {
-      [1] = {bold = true, foreground = Screen.colors.Blue1};
-      [2] = {foreground = Screen.colors.Grey100, background = Screen.colors.Red};
-      [3] = {bold = true, foreground = Screen.colors.SeaGreen4};
-      [4] = {bold = true, reverse = true};
-    }
-    screen:attach()
-    command("set shortmess-=F")
+    write_file('Xtest-overwrite', [[foobar]])
+    local screen = Screen.new(60, 8)
+    command('set shortmess-=F')
 
-    feed_command("e Xtest-overwrite")
+    feed_command('e Xtest-overwrite')
     screen:expect([[
       ^foobar                                                      |
-      {1:~                                                           }|
-      {1:~                                                           }|
-      {1:~                                                           }|
-      {1:~                                                           }|
-      {1:~                                                           }|
-      {1:~                                                           }|
+      {1:~                                                           }|*6
       "Xtest-overwrite" [noeol] 1L, 6B                            |
     ]])
 
-    -- The timestamp is in second resolution, wait two seconds to be sure.
-    screen:sleep(2000)
-    write_file("Xtest-overwrite", [[smurf]])
-    feed_command("w")
+    -- Wait for some time so that the timestamp changes.
+    vim.uv.sleep(10)
+    write_file('Xtest-overwrite', [[smurf]])
+    feed_command('w')
+    screen:expect([[
+      foobar                                                      |
+      {1:~                                                           }|*3
+      {3:                                                            }|
+      "Xtest-overwrite"                                           |
+      {9:WARNING: The file has been changed since reading it!!!}      |
+      {6:Do you really want to write to it (y/n)?}^                    |
+    ]])
+
+    feed('u')
+    screen:expect([[
+      foobar                                                      |
+      {1:~                                                           }|*2
+      {3:                                                            }|
+      "Xtest-overwrite"                                           |
+      {9:WARNING: The file has been changed since reading it!!!}      |
+      {6:Do you really want to write to it (y/n)?}u                   |
+      {6:Do you really want to write to it (y/n)?}^                    |
+    ]])
+
+    feed('\005')
     screen:expect([[
       foobar                                                      |
       {1:~                                                           }|
-      {1:~                                                           }|
-      {1:~                                                           }|
-      {4:                                                            }|
+      {3:                                                            }|
       "Xtest-overwrite"                                           |
-      {2:WARNING: The file has been changed since reading it!!!}      |
-      {3:Do you really want to write to it (y/n)?}^                    |
+      {9:WARNING: The file has been changed since reading it!!!}      |
+      {6:Do you really want to write to it (y/n)?}u                   |
+      {6:Do you really want to write to it (y/n)?}{18:^E}                  |
+      {6:Do you really want to write to it (y/n)?}^                    |
     ]])
 
-    feed("u")
+    feed('n')
     screen:expect([[
       foobar                                                      |
-      {1:~                                                           }|
-      {1:~                                                           }|
-      {4:                                                            }|
+      {3:                                                            }|
       "Xtest-overwrite"                                           |
-      {2:WARNING: The file has been changed since reading it!!!}      |
-      {3:Do you really want to write to it (y/n)?}u                   |
-      {3:Do you really want to write to it (y/n)?}^                    |
+      {9:WARNING: The file has been changed since reading it!!!}      |
+      {6:Do you really want to write to it (y/n)?}u                   |
+      {6:Do you really want to write to it (y/n)?}{18:^E}                  |
+      {6:Do you really want to write to it (y/n)?}n                   |
+      {6:Press ENTER or type command to continue}^                     |
     ]])
 
-    feed("\005")
-    screen:expect([[
-      foobar                                                      |
-      {1:~                                                           }|
-      {4:                                                            }|
-      "Xtest-overwrite"                                           |
-      {2:WARNING: The file has been changed since reading it!!!}      |
-      {3:Do you really want to write to it (y/n)?}u                   |
-      {3:Do you really want to write to it (y/n)?}                    |
-      {3:Do you really want to write to it (y/n)?}^                    |
-    ]])
-
-    feed("n")
-    screen:expect([[
-      foobar                                                      |
-      {4:                                                            }|
-      "Xtest-overwrite"                                           |
-      {2:WARNING: The file has been changed since reading it!!!}      |
-      {3:Do you really want to write to it (y/n)?}u                   |
-      {3:Do you really want to write to it (y/n)?}                    |
-      {3:Do you really want to write to it (y/n)?}n                   |
-      {3:Press ENTER or type command to continue}^                     |
-    ]])
-
-    feed("<cr>")
+    feed('<cr>')
     screen:expect([[
       ^foobar                                                      |
-      {1:~                                                           }|
-      {1:~                                                           }|
-      {1:~                                                           }|
-      {1:~                                                           }|
-      {1:~                                                           }|
-      {1:~                                                           }|
+      {1:~                                                           }|*6
                                                                   |
     ]])
   end)
 end)
 
-describe("event processing and input", function()
+describe('event processing and input', function()
   it('not blocked by event bursts', function()
-    meths.set_keymap('', '<f2>', "<cmd>lua vim.rpcnotify(1, 'stop') winning = true <cr>", {noremap=true})
+    api.nvim_set_keymap(
+      '',
+      '<f2>',
+      "<cmd>lua vim.rpcnotify(1, 'stop') winning = true <cr>",
+      { noremap = true }
+    )
 
     exec_lua [[
       winning = false
@@ -425,9 +416,9 @@ describe("event processing and input", function()
       burst(true)
     ]]
 
-    eq({'notification', 'start', {}}, next_msg())
+    eq({ 'notification', 'start', {} }, next_msg())
     feed '<f2>'
-    eq({'notification', 'stop', {}}, next_msg())
+    eq({ 'notification', 'stop', {} }, next_msg())
   end)
 end)
 
@@ -435,11 +426,6 @@ describe('display is updated', function()
   local screen
   before_each(function()
     screen = Screen.new(60, 8)
-    screen:set_default_attr_ids({
-      [1] = {bold = true, foreground = Screen.colors.Blue1},  -- NonText
-      [2] = {bold = true},  -- ModeMsg
-    })
-    screen:attach()
   end)
 
   it('in Insert mode after <Nop> mapping #17911', function()
@@ -449,12 +435,8 @@ describe('display is updated', function()
     screen:expect([[
       abc                                                         |
       ^                                                            |
-      {1:~                                                           }|
-      {1:~                                                           }|
-      {1:~                                                           }|
-      {1:~                                                           }|
-      {1:~                                                           }|
-      {2:-- INSERT --}                                                |
+      {1:~                                                           }|*5
+      {5:-- INSERT --}                                                |
     ]])
   end)
 
@@ -465,12 +447,8 @@ describe('display is updated', function()
     screen:expect([[
       abc                                                         |
       ^                                                            |
-      {1:~                                                           }|
-      {1:~                                                           }|
-      {1:~                                                           }|
-      {1:~                                                           }|
-      {1:~                                                           }|
-      {2:-- INSERT --}                                                |
+      {1:~                                                           }|*5
+      {5:-- INSERT --}                                                |
     ]])
   end)
 end)

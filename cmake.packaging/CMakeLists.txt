@@ -1,6 +1,7 @@
 set(CPACK_PACKAGE_NAME "Neovim")
 set(CPACK_PACKAGE_VENDOR "neovim.io")
 set(CPACK_PACKAGE_FILE_NAME "nvim")
+set(CPACK_PACKAGE_DIRECTORY ${PROJECT_BINARY_DIR})
 
 # From the GitHub About section
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Vim-fork focused on extensibility and usability.")
@@ -34,13 +35,21 @@ if(WIN32)
   set(CPACK_WIX_UPGRADE_GUID "207A1A70-7B0C-418A-A153-CA6883E38F4D")
   set(CPACK_WIX_PRODUCT_ICON ${PROJECT_SOURCE_DIR}/runtime/neovim.ico)
 
-  # We use a wix patch to add further options to the installer. At present, it's just to add neovim to the path
-  # on installation, however, it can be extended.
+  # Create start menu and desktop shortcuts
+  set(CPACK_WIX_PROGRAM_MENU_FOLDER "${CPACK_PACKAGE_NAME}")
+  set(CPACK_PACKAGE_EXECUTABLES "nvim" "Neovim")
+  set(CPACK_WIX_INSTALL_SCOPE "perMachine")
+
+  set(CPACK_WIX_UI_REF "WixUI_CustomInstallDir")
+  list(APPEND CPACK_WIX_EXTRA_SOURCES ${CMAKE_CURRENT_LIST_DIR}/WixUI_CustomInstallDir.wxs)
+  list(APPEND CPACK_WIX_EXTRA_SOURCES ${CMAKE_CURRENT_LIST_DIR}/CustomInstallDirDlg.wxs)
+
+  # We use a wix patch to add further options to the installer.
   # See: https://cmake.org/cmake/help/v3.7/module/CPackWIX.html#variable:CPACK_WIX_PATCH_FILE
   list(APPEND CPACK_WIX_EXTENSIONS WixUtilExtension)
   list(APPEND CPACK_WIX_PATCH_FILE ${CMAKE_CURRENT_LIST_DIR}/WixPatch.xml)
 elseif(APPLE)
-  set(CPACK_PACKAGE_FILE_NAME "nvim-macos")
+  set(CPACK_PACKAGE_FILE_NAME "nvim-macos-${CMAKE_SYSTEM_PROCESSOR}")
   set(CPACK_GENERATOR TGZ)
   set(CPACK_PACKAGE_ICON ${CMAKE_CURRENT_LIST_DIR}/neovim.icns)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")

@@ -1,13 +1,15 @@
-local helpers = require("test.functional.helpers")(after_each)
-local clear = helpers.clear
-local eq = helpers.eq
-local funcs = helpers.funcs
-local command = helpers.command
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear = n.clear
+local eq = t.eq
+local fn = n.fn
+local command = n.command
 
 it(':wincmd accepts a count', function()
   clear()
   command('vsplit')
-  eq(1, funcs.winnr())
+  eq(1, fn.winnr())
   command('wincmd 2 w')
-  eq(2, funcs.winnr())
+  eq(2, fn.winnr())
 end)

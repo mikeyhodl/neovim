@@ -1,17 +1,28 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 // Context: snapshot of the entire editor state as one big object/map
 
+#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "nvim/api/keysets_defs.h"
 #include "nvim/api/private/converter.h"
+#include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
-#include "nvim/api/vim.h"
 #include "nvim/api/vimscript.h"
 #include "nvim/context.h"
 #include "nvim/eval/encode.h"
+#include "nvim/eval/typval.h"
+#include "nvim/eval/typval_defs.h"
 #include "nvim/eval/userfunc.h"
 #include "nvim/ex_docmd.h"
+#include "nvim/hashtab.h"
+#include "nvim/keycodes.h"
+#include "nvim/memory.h"
+#include "nvim/memory_defs.h"
 #include "nvim/option.h"
+#include "nvim/option_defs.h"
 #include "nvim/shada.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
@@ -56,21 +67,11 @@ Context *ctx_get(size_t index)
 void ctx_free(Context *ctx)
   FUNC_ATTR_NONNULL_ALL
 {
-  if (ctx->regs.data) {
-    msgpack_sbuffer_destroy(&ctx->regs);
-  }
-  if (ctx->jumps.data) {
-    msgpack_sbuffer_destroy(&ctx->jumps);
-  }
-  if (ctx->bufs.data) {
-    msgpack_sbuffer_destroy(&ctx->bufs);
-  }
-  if (ctx->gvars.data) {
-    msgpack_sbuffer_destroy(&ctx->gvars);
-  }
-  if (ctx->funcs.items) {
-    api_free_array(ctx->funcs);
-  }
+  api_free_string(ctx->regs);
+  api_free_string(ctx->jumps);
+  api_free_string(ctx->bufs);
+  api_free_string(ctx->gvars);
+  api_free_array(ctx->funcs);
 }
 
 /// Saves the editor state to a context.
@@ -88,19 +89,19 @@ void ctx_save(Context *ctx, const int flags)
   }
 
   if (flags & kCtxRegs) {
-    ctx_save_regs(ctx);
+    ctx->regs = shada_encode_regs();
   }
 
   if (flags & kCtxJumps) {
-    ctx_save_jumps(ctx);
+    ctx->jumps = shada_encode_jumps();
   }
 
   if (flags & kCtxBufs) {
-    ctx_save_bufs(ctx);
+    ctx->bufs = shada_encode_buflist();
   }
 
   if (flags & kCtxGVars) {
-    ctx_save_gvars(ctx);
+    ctx->gvars = shada_encode_gvars();
   }
 
   if (flags & kCtxFuncs) {
@@ -130,9 +131,8 @@ bool ctx_restore(Context *ctx, const int flags)
     free_ctx = true;
   }
 
-  char *op_shada;
-  get_option_value("shada", NULL, &op_shada, OPT_GLOBAL);
-  set_option_value("shada", 0L, "!,'100,%", OPT_GLOBAL);
+  OptVal op_shada = get_option_value(kOptShada, OPT_GLOBAL);
+  set_option_value(kOptShada, STATIC_CSTR_AS_OPTVAL("!,'100,%"), OPT_GLOBAL);
 
   if (flags & kCtxRegs) {
     ctx_restore_regs(ctx);
@@ -158,20 +158,10 @@ bool ctx_restore(Context *ctx, const int flags)
     ctx_free(ctx);
   }
 
-  set_option_value("shada", 0L, op_shada, OPT_GLOBAL);
-  xfree(op_shada);
+  set_option_value(kOptShada, op_shada, OPT_GLOBAL);
+  optval_free(op_shada);
 
   return true;
-}
-
-/// Saves the global registers to a context.
-///
-/// @param  ctx    Save to this context.
-static inline void ctx_save_regs(Context *ctx)
-  FUNC_ATTR_NONNULL_ALL
-{
-  msgpack_sbuffer_init(&ctx->regs);
-  shada_encode_regs(&ctx->regs);
 }
 
 /// Restores the global registers from a context.
@@ -180,17 +170,7 @@ static inline void ctx_save_regs(Context *ctx)
 static inline void ctx_restore_regs(Context *ctx)
   FUNC_ATTR_NONNULL_ALL
 {
-  shada_read_sbuf(&ctx->regs, kShaDaWantInfo | kShaDaForceit);
-}
-
-/// Saves the jumplist to a context.
-///
-/// @param  ctx  Save to this context.
-static inline void ctx_save_jumps(Context *ctx)
-  FUNC_ATTR_NONNULL_ALL
-{
-  msgpack_sbuffer_init(&ctx->jumps);
-  shada_encode_jumps(&ctx->jumps);
+  shada_read_string(ctx->regs, kShaDaWantInfo | kShaDaForceit);
 }
 
 /// Restores the jumplist from a context.
@@ -199,17 +179,7 @@ static inline void ctx_save_jumps(Context *ctx)
 static inline void ctx_restore_jumps(Context *ctx)
   FUNC_ATTR_NONNULL_ALL
 {
-  shada_read_sbuf(&ctx->jumps, kShaDaWantInfo | kShaDaForceit);
-}
-
-/// Saves the buffer list to a context.
-///
-/// @param  ctx  Save to this context.
-static inline void ctx_save_bufs(Context *ctx)
-  FUNC_ATTR_NONNULL_ALL
-{
-  msgpack_sbuffer_init(&ctx->bufs);
-  shada_encode_buflist(&ctx->bufs);
+  shada_read_string(ctx->jumps, kShaDaWantInfo | kShaDaForceit);
 }
 
 /// Restores the buffer list from a context.
@@ -218,17 +188,7 @@ static inline void ctx_save_bufs(Context *ctx)
 static inline void ctx_restore_bufs(Context *ctx)
   FUNC_ATTR_NONNULL_ALL
 {
-  shada_read_sbuf(&ctx->bufs, kShaDaWantInfo | kShaDaForceit);
-}
-
-/// Saves global variables to a context.
-///
-/// @param  ctx  Save to this context.
-static inline void ctx_save_gvars(Context *ctx)
-  FUNC_ATTR_NONNULL_ALL
-{
-  msgpack_sbuffer_init(&ctx->gvars);
-  shada_encode_gvars(&ctx->gvars);
+  shada_read_string(ctx->bufs, kShaDaWantInfo | kShaDaForceit);
 }
 
 /// Restores global variables from a context.
@@ -237,7 +197,7 @@ static inline void ctx_save_gvars(Context *ctx)
 static inline void ctx_restore_gvars(Context *ctx)
   FUNC_ATTR_NONNULL_ALL
 {
-  shada_read_sbuf(&ctx->gvars, kShaDaWantInfo | kShaDaForceit);
+  shada_read_string(ctx->gvars, kShaDaWantInfo | kShaDaForceit);
 }
 
 /// Saves functions to a context.
@@ -251,16 +211,17 @@ static inline void ctx_save_funcs(Context *ctx, bool scriptonly)
   Error err = ERROR_INIT;
 
   HASHTAB_ITER(func_tbl_get(), hi, {
-    const char_u *const name = hi->hi_key;
-    bool islambda = (STRNCMP(name, "<lambda>", 8) == 0);
-    bool isscript = (name[0] == K_SPECIAL);
+    const char *const name = hi->hi_key;
+    bool islambda = (strncmp(name, "<lambda>", 8) == 0);
+    bool isscript = ((uint8_t)name[0] == K_SPECIAL);
 
     if (!islambda && (!scriptonly || isscript)) {
-      size_t cmd_len = sizeof("func! ") + STRLEN(name);
+      size_t cmd_len = sizeof("func! ") + strlen(name);
       char *cmd = xmalloc(cmd_len);
       snprintf(cmd, cmd_len, "func! %s", name);
-      String func_body = nvim_exec(VIML_INTERNAL_CALL, cstr_as_string(cmd),
-                                   true, &err);
+      Dict(exec_opts) opts = { .output = true };
+      String func_body = exec_impl(VIML_INTERNAL_CALL, cstr_as_string(cmd),
+                                   &opts, &err);
       xfree(cmd);
       if (!ERROR_SET(&err)) {
         ADD(ctx->funcs, STRING_OBJ(func_body));
@@ -281,104 +242,81 @@ static inline void ctx_restore_funcs(Context *ctx)
   }
 }
 
-/// Convert msgpack_sbuffer to readfile()-style array.
-///
-/// @param[in]  sbuf  msgpack_sbuffer to convert.
-///
-/// @return readfile()-style array representation of "sbuf".
-static inline Array sbuf_to_array(msgpack_sbuffer sbuf)
-{
-  list_T *const list = tv_list_alloc(kListLenMayKnow);
-  tv_list_append_string(list, "", 0);
-  if (sbuf.size > 0) {
-    encode_list_write(list, sbuf.data, sbuf.size);
-  }
-
-  typval_T list_tv = (typval_T) {
-    .v_lock = VAR_UNLOCKED,
-    .v_type = VAR_LIST,
-    .vval.v_list = list
-  };
-
-  Array array = vim_to_object(&list_tv).data.array;
-  tv_clear(&list_tv);
-  return array;
-}
-
-/// Convert readfile()-style array to msgpack_sbuffer.
+/// Convert readfile()-style array to String
 ///
 /// @param[in]  array  readfile()-style array to convert.
+/// @param[out]  err   Error object.
 ///
-/// @return msgpack_sbuffer with conversion result.
-static inline msgpack_sbuffer array_to_sbuf(Array array)
+/// @return String with conversion result.
+static inline String array_to_string(Array array, Error *err)
+  FUNC_ATTR_NONNULL_ALL
 {
-  msgpack_sbuffer sbuf;
-  msgpack_sbuffer_init(&sbuf);
+  String sbuf = STRING_INIT;
 
   typval_T list_tv;
-  Error err = ERROR_INIT;
-  object_to_vim(ARRAY_OBJ(array), &list_tv, &err);
+  object_to_vim(ARRAY_OBJ(array), &list_tv, err);
 
+  assert(list_tv.v_type == VAR_LIST);
   if (!encode_vim_list_to_buf(list_tv.vval.v_list, &sbuf.size, &sbuf.data)) {
-    emsg(_("E474: Failed to convert list to msgpack string buffer"));
+    api_set_error(err, kErrorTypeException, "%s",
+                  "E474: Failed to convert list to msgpack string buffer");
   }
-  sbuf.alloc = sbuf.size;
 
   tv_clear(&list_tv);
-  api_clear_error(&err);
   return sbuf;
 }
 
-/// Converts Context to Dictionary representation.
+/// Converts Context to Dict representation.
 ///
 /// @param[in]  ctx  Context to convert.
 ///
-/// @return Dictionary representing "ctx".
-Dictionary ctx_to_dict(Context *ctx)
+/// @return Dict representing "ctx".
+Dict ctx_to_dict(Context *ctx, Arena *arena)
   FUNC_ATTR_NONNULL_ALL
 {
   assert(ctx != NULL);
 
-  Dictionary rv = ARRAY_DICT_INIT;
+  Dict rv = arena_dict(arena, 5);
 
-  PUT(rv, "regs", ARRAY_OBJ(sbuf_to_array(ctx->regs)));
-  PUT(rv, "jumps", ARRAY_OBJ(sbuf_to_array(ctx->jumps)));
-  PUT(rv, "bufs", ARRAY_OBJ(sbuf_to_array(ctx->bufs)));
-  PUT(rv, "gvars", ARRAY_OBJ(sbuf_to_array(ctx->gvars)));
-  PUT(rv, "funcs", ARRAY_OBJ(copy_array(ctx->funcs, NULL)));
+  PUT_C(rv, "regs", ARRAY_OBJ(string_to_array(ctx->regs, false, arena)));
+  PUT_C(rv, "jumps", ARRAY_OBJ(string_to_array(ctx->jumps, false, arena)));
+  PUT_C(rv, "bufs", ARRAY_OBJ(string_to_array(ctx->bufs, false, arena)));
+  PUT_C(rv, "gvars", ARRAY_OBJ(string_to_array(ctx->gvars, false, arena)));
+  PUT_C(rv, "funcs", ARRAY_OBJ(copy_array(ctx->funcs, arena)));
 
   return rv;
 }
 
-/// Converts Dictionary representation of Context back to Context object.
+/// Converts Dict representation of Context back to Context object.
 ///
-/// @param[in]   dict  Context Dictionary representation.
+/// @param[in]   dict  Context Dict representation.
 /// @param[out]  ctx   Context object to store conversion result into.
+/// @param[out]  err   Error object.
 ///
 /// @return types of included context items.
-int ctx_from_dict(Dictionary dict, Context *ctx)
+int ctx_from_dict(Dict dict, Context *ctx, Error *err)
   FUNC_ATTR_NONNULL_ALL
 {
   assert(ctx != NULL);
 
   int types = 0;
-  for (size_t i = 0; i < dict.size; i++) {
+  for (size_t i = 0; i < dict.size && !ERROR_SET(err); i++) {
     KeyValuePair item = dict.items[i];
     if (item.value.type != kObjectTypeArray) {
       continue;
     }
     if (strequal(item.key.data, "regs")) {
       types |= kCtxRegs;
-      ctx->regs = array_to_sbuf(item.value.data.array);
+      ctx->regs = array_to_string(item.value.data.array, err);
     } else if (strequal(item.key.data, "jumps")) {
       types |= kCtxJumps;
-      ctx->jumps = array_to_sbuf(item.value.data.array);
+      ctx->jumps = array_to_string(item.value.data.array, err);
     } else if (strequal(item.key.data, "bufs")) {
       types |= kCtxBufs;
-      ctx->bufs = array_to_sbuf(item.value.data.array);
+      ctx->bufs = array_to_string(item.value.data.array, err);
     } else if (strequal(item.key.data, "gvars")) {
       types |= kCtxGVars;
-      ctx->gvars = array_to_sbuf(item.value.data.array);
+      ctx->gvars = array_to_string(item.value.data.array, err);
     } else if (strequal(item.key.data, "funcs")) {
       types |= kCtxFuncs;
       ctx->funcs = copy_object(item.value, NULL).data.array;

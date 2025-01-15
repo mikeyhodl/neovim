@@ -1,10 +1,7 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
-/// VimL expression parser
+/// Vimscript expression parser
 
 // Planned incompatibilities (to be included into vim_diff.txt when this parser
-// will be an actual part of VimL evaluation process):
+// will be an actual part of Vimscript evaluation process):
 //
 // 1. Expressions are first fully parsed and only then executed.  This means
 //    that while ":echo [system('touch abc')" will create file "abc" in Vim and
@@ -53,16 +50,21 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "klib/kvec.h"
-#include "nvim/ascii.h"
-#include "nvim/assert.h"
+#include "nvim/ascii_defs.h"
+#include "nvim/assert_defs.h"
 #include "nvim/charset.h"
-#include "nvim/eval/typval.h"
+#include "nvim/eval.h"
+#include "nvim/gettext_defs.h"
+#include "nvim/keycodes.h"
+#include "nvim/macros_defs.h"
+#include "nvim/mbyte.h"
 #include "nvim/memory.h"
-#include "nvim/types.h"
-#include "nvim/vim.h"
+#include "nvim/types_defs.h"
 #include "nvim/viml/parser/expressions.h"
 #include "nvim/viml/parser/parser.h"
 
@@ -83,7 +85,7 @@ typedef enum {
 
 /// Parse type: what is being parsed currently
 typedef enum {
-  /// Parsing regular VimL expression
+  /// Parsing regular Vimscript expression
   kEPTExpr = 0,
   /// Parsing lambda arguments
   ///
@@ -165,7 +167,7 @@ static inline float_T scale_number(const float_T num, const uint8_t base,
   return ret;
 }
 
-/// Get next token for the VimL expression input
+/// Get next token for the Vimscript expression input
 ///
 /// @param  pstate  Parser state.
 /// @param[in]  flags  Flags, @see LexExprFlags.
@@ -361,7 +363,7 @@ LexExprToken viml_pexpr_next_token(ParserState *const pstate, const int flags)
       // uses recorded position to scale number down when processing exponent.
       float_T significand_part = 0;
       uvarnumber_T exp_part = 0;
-      const size_t frac_size = (size_t)(frac_end - frac_start);
+      const size_t frac_size = frac_end - frac_start;
       for (size_t i = 0; i < frac_end; i++) {
         if (i == frac_start - 1) {
           continue;
@@ -370,7 +372,7 @@ LexExprToken viml_pexpr_next_token(ParserState *const pstate, const int flags)
       }
       if (exp_start) {
         vim_str2nr(pline.data + exp_start, NULL, NULL, 0, NULL, &exp_part,
-                   (int)(ret.len - exp_start), false);
+                   (int)(ret.len - exp_start), false, NULL);
       }
       if (exp_negative) {
         exp_part += frac_size;
@@ -388,7 +390,7 @@ LexExprToken viml_pexpr_next_token(ParserState *const pstate, const int flags)
       int len;
       int prep;
       vim_str2nr(pline.data, &prep, &len, STR2NR_ALL, NULL,
-                 &ret.data.num.val.integer, (int)pline.size, false);
+                 &ret.data.num.val.integer, (int)pline.size, false, NULL);
       ret.len = (size_t)len;
       const uint8_t bases[] = {
         [0] = 10,
@@ -628,8 +630,8 @@ LexExprToken viml_pexpr_next_token(ParserState *const pstate, const int flags)
     GET_CCS(ret, pline);
     ret.data.cmp.inv = (schar == '<');
     ret.data.cmp.type = ((ret.data.cmp.inv ^ haseqsign)
-                           ? kExprCmpGreaterOrEqual
-                           : kExprCmpGreater);
+                         ? kExprCmpGreaterOrEqual
+                         : kExprCmpGreater);
     break;
   }
 
@@ -932,7 +934,6 @@ static const char *intchar2str(const int ch)
 }
 
 #ifdef UNIT_TESTING
-# include <stdio.h>
 
 REAL_FATTR_UNUSED
 static inline void viml_pexpr_debug_print_ast_node(const ExprASTNode *const *const eastnode_p,
@@ -1162,7 +1163,7 @@ static struct {
   // represented as "list(comma(a, comma(b, comma(c, d))))" then if it is
   // "list(comma(comma(comma(a, b), c), d))" in which case you will need to
   // traverse all three comma() structures. And with comma operator (including
-  // actual comma operator from C which is not present in VimL) nobody cares
+  // actual comma operator from C which is not present in Vimscript) nobody cares
   // about associativity, only about order of execution.
   [kExprNodeComma] = { kEOpLvlComma, kEOpAssRight },
 
@@ -1263,21 +1264,12 @@ static bool viml_pexpr_handle_bop(const ParserState *const pstate, ExprASTStack 
                                    || bop_node->type == kExprNodeSubscript)
                                   ? kEOpLvlSubscript
                                   : node_lvl(*bop_node));
-#ifndef NDEBUG
-  const ExprOpAssociativity bop_node_ass = (
-                                            (bop_node->type == kExprNodeCall
-                                             || bop_node->type == kExprNodeSubscript)
-      ? kEOpAssLeft
-      : node_ass(*bop_node));
-#endif
   do {
     ExprASTNode **new_top_node_p = kv_last(*ast_stack);
     ExprASTNode *new_top_node = *new_top_node_p;
     assert(new_top_node != NULL);
     const ExprOpLvl new_top_node_lvl = node_lvl(*new_top_node);
     const ExprOpAssociativity new_top_node_ass = node_ass(*new_top_node);
-    assert(bop_node_lvl != new_top_node_lvl
-           || bop_node_ass == new_top_node_ass);
     if (top_node_p != NULL
         && ((bop_node_lvl > new_top_node_lvl
              || (bop_node_lvl == new_top_node_lvl
@@ -1819,8 +1811,8 @@ static void parse_quoted_string(ParserState *const pstate, ExprASTNode *const no
           if (p[1] != '*') {
             flags |= FSK_SIMPLIFY;
           }
-          const size_t special_len = trans_special((const char_u **)&p, (size_t)(e - p),
-                                                   (char_u *)v_p, flags, false, NULL);
+          const size_t special_len = trans_special(&p, (size_t)(e - p),
+                                                   v_p, flags, false, NULL);
           if (special_len != 0) {
             v_p += special_len;
           } else {
@@ -1909,7 +1901,7 @@ static const uint8_t base_to_prefix_length[] = {
   [16] = 2,
 };
 
-/// Parse one VimL expression
+/// Parse one Vimscript expression
 ///
 /// @param  pstate  Parser state.
 /// @param[in]  flags  Additional flags, see ExprParserFlags
@@ -1963,8 +1955,8 @@ ExprAST viml_pexpr_parse(ParserState *const pstate, const int flags)
                                                 || ((*kv_Z(ast_stack, 1))->type != kExprNodeConcat
                                                     && ((*kv_Z(ast_stack, 1))->type
                                                         != kExprNodeConcatOrSubscript))))
-           ? kELFlagAllowFloat
-           : 0));
+                                           ? kELFlagAllowFloat
+                                           : 0));
     LexExprToken cur_token = viml_pexpr_next_token(pstate,
                                                    want_node_to_lexer_flags[want_node] |
                                                    lexer_additional_flags);
@@ -2031,9 +2023,9 @@ viml_pexpr_parse_process_token:
     const bool node_is_key = (
                               is_concat_or_subscript
                               && (cur_token.type == kExprLexPlainIdentifier
-            ? (!cur_token.data.var.autoload
-               && cur_token.data.var.scope == kExprVarScopeMissing)
-            : (cur_token.type == kExprLexNumber))
+                                  ? (!cur_token.data.var.autoload
+                                     && cur_token.data.var.scope == kExprVarScopeMissing)
+                                  : (cur_token.type == kExprLexNumber))
                               && prev_token.type != kExprLexSpacing);
     if (is_concat_or_subscript && !node_is_key) {
       // Note: in Vim "d. a" (this is the reason behind `prev_token.type !=
@@ -2201,8 +2193,8 @@ viml_pexpr_parse_process_token:
         cur_node->data.opt.ident_len = 0;
         cur_node->data.opt.scope = (
                                     cur_token.len == 3
-              ? (ExprOptScope)pline.data[cur_token.start.col + 1]
-              : kExprOptScopeUnspecified);
+                                    ? (ExprOptScope)pline.data[cur_token.start.col + 1]
+                                    : kExprOptScopeUnspecified);
       } else {
         cur_node->data.opt.ident = cur_token.data.opt.name;
         cur_node->data.opt.ident_len = cur_token.data.opt.len;
@@ -2491,7 +2483,6 @@ viml_pexpr_parse_bracket_closing_error:
           NEW_NODE_WITH_CUR_POS(cur_node, kExprNodeListLiteral);
           *top_node_p = cur_node;
           kvi_push(ast_stack, &cur_node->children);
-          want_node = kENodeValue;
           if (cur_pt == kEPTAssignment) {
             // Additional assignment parse type allows to easily forbid nested
             // lists.
@@ -2707,14 +2698,14 @@ viml_pexpr_parse_figure_brace_closing_error:
       break;
     case kExprLexPlainIdentifier: {
       const ExprVarScope scope = (cur_token.type == kExprLexInvalid
-                                    ? kExprVarScopeMissing
-                                    : cur_token.data.var.scope);
+                                  ? kExprVarScopeMissing
+                                  : cur_token.data.var.scope);
       if (want_node == kENodeValue) {
         want_node = kENodeOperator;
         NEW_NODE_WITH_CUR_POS(cur_node,
                               (node_is_key
-                                 ? kExprNodePlainKey
-                                 : kExprNodePlainIdentifier));
+                               ? kExprNodePlainKey
+                               : kExprNodePlainIdentifier));
         cur_node->data.var.scope = scope;
         const size_t scope_shift = (scope == kExprVarScopeMissing ? 0 : 2);
         cur_node->data.var.ident = (pline.data + cur_token.start.col
@@ -2732,8 +2723,8 @@ viml_pexpr_parse_figure_brace_closing_error:
                                                   scope_shift),
                               cur_token.len - scope_shift,
                               (node_is_key
-                                 ? HL(IdentifierKey)
-                                 : HL(IdentifierName)));
+                               ? HL(IdentifierKey)
+                               : HL(IdentifierName)));
       } else {
         if (scope == kExprVarScopeMissing) {
           // uncrustify:off
@@ -2861,7 +2852,7 @@ viml_pexpr_parse_no_paren_closing_error: {}
         case kENodeOperator:
           if (prev_token.type == kExprLexSpacing) {
             // For some reason "function (args)" is a function call, but
-            // "(funcref) (args)" is not. AFAIR this somehow involves
+            // "(funcref) (args)" is not. As far as I remember this somehow involves
             // compatibility and Bram was commenting that this is
             // intentionally inconsistent and he is not very happy with the
             // situation himself.
@@ -2902,15 +2893,15 @@ viml_pexpr_parse_no_paren_closing_error: {}
         // different error numbers: "E114: Missing quote" and
         // "E115: Missing quote".
         ERROR_FROM_TOKEN_AND_MSG(cur_token, (is_double
-                          ? _("E114: Missing double quote: %.*s")
-                          : _("E115: Missing single quote: %.*s")));
+                                             ? _("E114: Missing double quote: %.*s")
+                                             : _("E115: Missing single quote: %.*s")));
       }
       if (want_node == kENodeOperator) {
         OP_MISSING;
       }
       NEW_NODE_WITH_CUR_POS(cur_node, (is_double
-                       ? kExprNodeDoubleQuotedString
-                       : kExprNodeSingleQuotedString));
+                                       ? kExprNodeDoubleQuotedString
+                                       : kExprNodeSingleQuotedString));
       *top_node_p = cur_node;
       parse_quoted_string(pstate, cur_node, cur_token, &ast_stack, is_invalid);
       want_node = kENodeOperator;
@@ -3014,8 +3005,7 @@ viml_pexpr_parse_end:
         break;
       case kExprNodeCurlyBracesIdentifier:
         // Until trailing "}" it is impossible to distinguish curly braces
-        // identifier and dictionary, so it must not appear in the stack like
-        // this.
+        // identifier and Dict, so it must not appear in the stack like this.
         abort();
       case kExprNodeInteger:
       case kExprNodeFloat:

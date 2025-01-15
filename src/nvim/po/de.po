@@ -397,8 +397,8 @@ msgid " Omni completion (^O^N^P)"
 msgstr " Omni-Ergänzung (^O^N^P)"
 
 #: ../edit.c:97
-msgid " Spelling suggestion (s^N^P)"
-msgstr " Vorschlag der Rechtschreibprüfung (s^N^P)"
+msgid " Spelling suggestion (^S^N^P)"
+msgstr " Vorschlag der Rechtschreibprüfung (^S^N^P)"
 
 #: ../edit.c:98
 msgid " Keyword Local completion (^N^P)"
@@ -666,8 +666,8 @@ msgstr "E146: Reguläre Ausdrücke können nicht durch Buchstaben begrenzt werden"
 
 #: ../ex_cmds.c:3958
 #, c-format
-msgid "replace with %s (y/n/a/q/l/^E/^Y)?"
-msgstr "ersetze durch %s (y/n/a/q/l/^E/^Y)?"
+msgid "replace with %s? (y)es/(n)o/(a)ll/(q)uit/(l)ast/scroll up(^E)/down(^Y)"
+msgstr "ersetze durch %s? (y)es/(n)o/(a)ll/(q)uit/(l)ast/scroll up(^E)/down(^Y)"
 
 #: ../ex_cmds.c:4373
 msgid "(Interrupted) "
@@ -2434,126 +2434,6 @@ msgstr "Suche erreichte den ANFANG und wurde am ENDE fortgesetzt"
 msgid "search hit BOTTOM, continuing at TOP"
 msgstr "Suche erreichte das ENDE und wurde am ANFANG fortgesetzt"
 
-#: ../hardcopy.c:296
-msgid "E550: Missing colon"
-msgstr "E550: Fehlender Doppelpunkt"
-
-#: ../hardcopy.c:308
-msgid "E551: Illegal component"
-msgstr "E551: Unzulässige Komponente"
-
-#: ../hardcopy.c:315
-msgid "E552: digit expected"
-msgstr "E552: Ziffer erwartet"
-
-#: ../hardcopy.c:529
-#, c-format
-msgid "Page %d"
-msgstr "Seite %d"
-
-#: ../hardcopy.c:653
-msgid "No text to be printed"
-msgstr "Kein Text zum Drucken"
-
-#: ../hardcopy.c:724
-#, c-format
-msgid "Printing page %d (%d%%)"
-msgstr "Drucke Seite %d (%d%%)"
-
-#: ../hardcopy.c:736
-#, c-format
-msgid " Copy %d of %d"
-msgstr " Kopiere %d von %d"
-
-#: ../hardcopy.c:789
-#, c-format
-msgid "Printed: %s"
-msgstr "Gedruckt: %s"
-
-#: ../hardcopy.c:796
-msgid "Printing aborted"
-msgstr "Druck abgebrochen"
-
-#: ../hardcopy.c:1307
-msgid "E455: Error writing to PostScript output file"
-msgstr "E455: Fehler beim Schreiben der PostScript-Ausgabedatei"
-
-#: ../hardcopy.c:1679
-#, c-format
-msgid "E624: Can't open file \"%s\""
-msgstr "E624: Datei \"%s\" kann nicht geöffnet werden"
-
-#: ../hardcopy.c:1688 ../hardcopy.c:2401
-#, c-format
-msgid "E457: Can't read PostScript resource file \"%s\""
-msgstr "E457: PostScript-Ressourcendatei \"%s\" kann nicht gelesen werden"
-
-#: ../hardcopy.c:1704
-#, c-format
-msgid "E618: file \"%s\" is not a PostScript resource file"
-msgstr "E618: Datei \"%s\" ist keine PostScript-Ressourcendatei"
-
-#: ../hardcopy.c:1720 ../hardcopy.c:1737 ../hardcopy.c:1776
-#, c-format
-msgid "E619: file \"%s\" is not a supported PostScript resource file"
-msgstr "E619: Datei \"%s\" ist keine unterstützte PostScript-Ressourcendatei"
-
-#: ../hardcopy.c:1788
-#, c-format
-msgid "E621: \"%s\" resource file has wrong version"
-msgstr "E621: \"%s\" Ressource-Datei hat die falsche Version"
-
-#: ../hardcopy.c:2157
-msgid "E673: Incompatible multi-byte encoding and character set."
-msgstr "E673: Unzulässiger Multibyte-Zeichensatz"
-
-#: ../hardcopy.c:2169
-msgid "E674: printmbcharset cannot be empty with multi-byte encoding."
-msgstr "E674: Bei Multibyte-Zeichensatz darf 'printmbcharset' nicht leer sein."
-
-#: ../hardcopy.c:2185
-msgid "E675: No default font specified for multi-byte printing."
-msgstr "E675: Keine Standardschriftart für Multibyte-Druck angegeben."
-
-#: ../hardcopy.c:2357
-msgid "E324: Can't open PostScript output file"
-msgstr "E324: PostScript-Ausgabedatei kann nicht geöffnet werden"
-
-#: ../hardcopy.c:2389
-#, c-format
-msgid "E456: Can't open file \"%s\""
-msgstr "E456: Datei \"%s\" kann nicht geöffnet werden"
-
-#: ../hardcopy.c:2514
-msgid "E456: Can't find PostScript resource file \"prolog.ps\""
-msgstr "E456: PostScript-Ressourcendatei \"prolog.ps\" nicht gefunden"
-
-#: ../hardcopy.c:2524
-msgid "E456: Can't find PostScript resource file \"cidfont.ps\""
-msgstr "E456: PostScript-Ressourcendatei \"cidfont.ps\" nicht gefunden"
-
-#: ../hardcopy.c:2553 ../hardcopy.c:2570 ../hardcopy.c:2596
-#, c-format
-msgid "E456: Can't find PostScript resource file \"%s.ps\""
-msgstr "E456: PostScript-Ressourcendatei \"%s\" nicht gefunden"
-
-#: ../hardcopy.c:2585
-#, c-format
-msgid "E620: Unable to convert to print encoding \"%s\""
-msgstr "E620: Umwandlung zu Drucker-Zeichensatz \"%s\" fehlgeschlagen"
-
-#: ../hardcopy.c:2808
-msgid "Sending to printer..."
-msgstr "Schicke zum Drucker..."
-
-#: ../hardcopy.c:2812
-msgid "E365: Failed to print PostScript file"
-msgstr "E365: Druck der PostScript-Datei fehlgeschlagen"
-
-#: ../hardcopy.c:2814
-msgid "Print job sent."
-msgstr "Druckauftrag abgeschickt"
-
 #: ../if_cscope.c:49
 msgid "Add a new database"
 msgstr "Eine neue Datenbank hinzufügen"
@@ -3556,9 +3436,9 @@ msgid "(2) An edit session for this file crashed.\n"
 msgstr "(2) Eine Sitzung für diese Datei ist abgestürzt.\n"
 
 #: ../memline.c:3204
-msgid "    If this is the case, use \":recover\" or \"vim -r "
+msgid "    If this is the case, use \":recover\" or \"nvim -r "
 msgstr ""
-"    Wenn dies der Fall ist, so verwenden Sie \":recover\" oder \"vim -r "
+"    Wenn dies der Fall ist, so verwenden Sie \":recover\" oder \"nvim -r "
 
 #: ../memline.c:3206
 msgid ""

@@ -1,9 +1,11 @@
 " Vim syntax file
 " Language:	TeX
-" Maintainer:	Charles E. Campbell <NcampObell@SdrPchip.AorgM-NOSPAM>
+" Maintainer:	This runtime file is looking for a new maintainer.
+" Former Maintainer: Charles E. Campbell
 " Last Change:	Apr 22, 2022
+"   2024 Feb 19 by Vim Project (announce adoption)
 " Version:	121
-" URL:		http://www.drchip.org/astronaut/vim/index.html#SYNTAX_TEX
+" Former URL:	http://www.drchip.org/astronaut/vim/index.html#SYNTAX_TEX
 "
 " Notes: {{{1
 "
@@ -107,9 +109,9 @@ if s:tex_fold_enabled && &fdm == "manual"
  setl fdm=syntax
 endif
 if s:tex_fold_enabled && has("folding")
- com! -nargs=* TexFold <args> fold 
+ com! -nargs=* TexFold <args> fold
 else
- com! -nargs=* TexFold <args> 
+ com! -nargs=* TexFold <args>
 endif
 
 " (La)TeX keywords: uses the characters 0-9,a-z,A-Z,192-255 only... {{{1
@@ -422,7 +424,7 @@ if s:tex_fast =~# 'b'
     syn region texEmphStyle	matchgroup=texTypeStyle start="\\texts[cfl]\s*{" matchgroup=texTypeStyle  end="}" concealends contains=@texBoldGroup,@Spell
     syn region texEmphStyle	matchgroup=texTypeStyle start="\\textup\s*{" matchgroup=texTypeStyle  end="}" concealends contains=@texBoldGroup,@Spell
     syn region texEmphStyle	matchgroup=texTypeStyle start="\\texttt\s*{" matchgroup=texTypeStyle  end="}" concealends contains=@texBoldGroup,@Spell
-   else                                                                                              
+   else
     syn region texBoldStyle	matchgroup=texTypeStyle start="\\textbf\s*{" matchgroup=texTypeStyle  end="}" concealends contains=@texBoldGroup
     syn region texBoldItalStyle	matchgroup=texTypeStyle start="\\textit\s*{" matchgroup=texTypeStyle  end="}" concealends contains=@texItalGroup
     syn region texItalStyle	matchgroup=texTypeStyle start="\\textit\s*{" matchgroup=texTypeStyle  end="}" concealends contains=@texItalGroup

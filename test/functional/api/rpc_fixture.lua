@@ -4,9 +4,8 @@
 package.path = arg[1]
 package.cpath = arg[2]
 
-local mpack = require('mpack')
-local StdioStream = require('nvim.stdio_stream')
-local Session = require('nvim.session')
+local StdioStream = require 'test.client.uv_stream'.StdioStream
+local Session = require 'test.client.session'
 
 local stdio_stream = StdioStream.open()
 local session = Session.new(stdio_stream)
@@ -16,16 +15,16 @@ local function on_request(method, args)
     return 'ok'
   elseif method == 'write_stderr' then
     io.stderr:write(args[1])
-    return "done!"
-  elseif method == "exit" then
+    return 'done!'
+  elseif method == 'exit' then
     session:stop()
-    return mpack.NIL
+    return vim.NIL
   end
 end
 
 local function on_notification(event, args)
   if event == 'ping' and #args == 0 then
-    session:notify("nvim_eval", "rpcnotify(g:channel, 'pong')")
+    session:notify('nvim_eval', "rpcnotify(g:channel, 'pong')")
   end
 end
 

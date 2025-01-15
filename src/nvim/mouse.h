@@ -1,25 +1,23 @@
-#ifndef NVIM_MOUSE_H
-#define NVIM_MOUSE_H
+#pragma once
 
-#include <stdbool.h>
-
-#include "nvim/buffer_defs.h"
-#include "nvim/normal.h"
-#include "nvim/vim.h"
-#include "nvim/window.h"
+#include "nvim/eval/typval_defs.h"  // IWYU pragma: keep
+#include "nvim/normal_defs.h"  // IWYU pragma: keep
+#include "nvim/types_defs.h"  // IWYU pragma: keep
+#include "nvim/vim_defs.h"  // IWYU pragma: keep
 
 /// jump_to_mouse() returns one of first five these values, possibly with
-/// some of the other four added.
+/// some of the other five added.
 enum {
   IN_UNKNOWN       = 0,
   IN_BUFFER        = 1,
-  IN_STATUS_LINE   = 2,      ///< on status or command line
-  IN_SEP_LINE      = 4,      ///< on vertical separator line
-  IN_OTHER_WIN     = 8,      ///< in other window but can't go there
+  IN_STATUS_LINE   = 2,       ///< on status or command line
+  IN_SEP_LINE      = 4,       ///< on vertical separator line
+  IN_OTHER_WIN     = 8,       ///< in other window but can't go there
   CURSOR_MOVED     = 0x100,
-  MOUSE_FOLD_CLOSE = 0x200,  ///< clicked on '-' in fold column
-  MOUSE_FOLD_OPEN  = 0x400,  ///< clicked on '+' in fold column
-  MOUSE_WINBAR     = 0x800,  ///< in window toolbar
+  MOUSE_FOLD_CLOSE = 0x200,   ///< clicked on '-' in fold column
+  MOUSE_FOLD_OPEN  = 0x400,   ///< clicked on '+' in fold column
+  MOUSE_WINBAR     = 0x800,   ///< in window toolbar
+  MOUSE_STATUSCOL  = 0x1000,  ///< in 'statuscolumn'
 };
 
 /// flags for jump_to_mouse()
@@ -55,5 +53,3 @@ enum {
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "mouse.h.generated.h"
 #endif
-
-#endif  // NVIM_MOUSE_H

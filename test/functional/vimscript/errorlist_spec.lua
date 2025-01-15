@@ -1,13 +1,14 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local clear = helpers.clear
-local command = helpers.command
-local eq = helpers.eq
-local exc_exec = helpers.exc_exec
-local get_cur_win_var = helpers.curwinmeths.get_var
+local clear = n.clear
+local command = n.command
+local eq = t.eq
+local exc_exec = n.exc_exec
+local get_win_var = n.api.nvim_win_get_var
 
 describe('setqflist()', function()
-  local setqflist = helpers.funcs.setqflist
+  local setqflist = n.fn.setqflist
 
   before_each(clear)
 
@@ -24,26 +25,29 @@ describe('setqflist()', function()
   end)
 
   it('sets w:quickfix_title', function()
-    setqflist({''}, 'r', 'foo')
+    setqflist({ '' }, 'r', 'foo')
     command('copen')
-    eq('foo', get_cur_win_var('quickfix_title'))
-    setqflist({}, 'r', {['title'] = 'qf_title'})
-    eq('qf_title', get_cur_win_var('quickfix_title'))
+    eq('foo', get_win_var(0, 'quickfix_title'))
+    setqflist({}, 'r', { ['title'] = 'qf_title' })
+    eq('qf_title', get_win_var(0, 'quickfix_title'))
   end)
 
   it('allows string {what} for backwards compatibility', function()
     setqflist({}, 'r', '5')
     command('copen')
-    eq('5', get_cur_win_var('quickfix_title'))
+    eq('5', get_win_var(0, 'quickfix_title'))
   end)
 
   it('requires a dict for {what}', function()
-    eq('Vim(call):E715: Dictionary required', exc_exec('call setqflist([], "r", function("function"))'))
+    eq(
+      'Vim(call):E715: Dictionary required',
+      exc_exec('call setqflist([], "r", function("function"))')
+    )
   end)
 end)
 
 describe('setloclist()', function()
-  local setloclist = helpers.funcs.setloclist
+  local setloclist = n.fn.setloclist
 
   before_each(clear)
 
@@ -64,21 +68,21 @@ describe('setloclist()', function()
     setloclist(1, {}, 'r', 'foo')
     setloclist(2, {}, 'r', 'bar')
     command('lopen')
-    eq('bar', get_cur_win_var('quickfix_title'))
+    eq('bar', get_win_var(0, 'quickfix_title'))
     command('lclose | wincmd w | lopen')
-    eq('foo', get_cur_win_var('quickfix_title'))
+    eq('foo', get_win_var(0, 'quickfix_title'))
   end)
 
   it("doesn't crash when when window is closed in the middle #13721", function()
-    helpers.insert([[
+    n.insert([[
     hello world]])
 
-    command("vsplit")
-    command("autocmd WinLeave * :call nvim_win_close(0, v:true)")
+    command('vsplit')
+    command('autocmd WinLeave * :call nvim_win_close(0, v:true)')
 
-    command("call setloclist(0, [])")
-    command("lopen")
+    command('call setloclist(0, [])')
+    command('lopen')
 
-    helpers.assert_alive()
+    n.assert_alive()
   end)
 end)

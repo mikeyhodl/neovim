@@ -489,8 +489,8 @@ In Insert or Command-line mode:
 |v_ip|	   N  ip	Select "inner paragraph"
 |v_ab|	   N  ab	Select "a block" (from "[(" to "])")
 |v_ib|	   N  ib	Select "inner block" (from "[(" to "])")
-|v_aB|	   N  aB	Select "a Block" (from "[{" to "]}")
-|v_iB|	   N  iB	Select "inner Block" (from "[{" to "]}")
+|v_aB|	   N  aB	Select "a Block" (from `[{` to `]}`)
+|v_iB|	   N  iB	Select "inner Block" (from `[{` to `]}`)
 |v_a>|	   N  a>	Select "a <> block"
 |v_i>|	   N  i>	Select "inner <> block"
 |v_at|	   N  at	Select "a tag block" (from <aaa> to </aaa>)
@@ -620,12 +620,11 @@ In Insert or Command-line mode:
 					  the help
 
 Short explanation of each option:		*option-list*
-'aleph'		  'al'	    ASCII code of the letter Aleph (Hebrew)
-'allowrevins'	  'ari'     allow CTRL-_ in Insert and Command-line mode
+'allowrevins'	  'ari'     allow CTRL-_ in Insert mode
 'ambiwidth'	  'ambw'    what to do with Unicode chars of ambiguous width
-'autochdir'	  'acd'     change directory to the file in the current window
 'arabic'	  'arab'    for Arabic as a default second language
 'arabicshape'	  'arshape' do shaping for Arabic characters
+'autochdir'	  'acd'     change directory to the file in the current window
 'autoindent'	  'ai'	    take indent for new line from previous line
 'autoread'	  'ar'	    autom. read file when changed outside of Vim
 'autowrite'	  'aw'	    automatically write file if changed
@@ -655,8 +654,8 @@ Short explanation of each option:		*option-list*
 'cindent'	  'cin'     do C program indenting
 'cinkeys'	  'cink'    keys that trigger indent when 'cindent' is set
 'cinoptions'	  'cino'    how to do indenting when 'cindent' is set
-'cinwords'	  'cinw'    words where 'si' and 'cin' add an indent
 'cinscopedecls'	  'cinsd'   words that are recognized by 'cino-g'
+'cinwords'	  'cinw'    words where 'si' and 'cin' add an indent
 'clipboard'	  'cb'	    use the clipboard as the unnamed register
 'cmdheight'	  'ch'	    number of lines to use for the command-line
 'cmdwinheight'	  'cwh'     height of the command-line window
@@ -698,7 +697,7 @@ Short explanation of each option:		*option-list*
 'errorformat'	  'efm'     description of the lines in the error file
 'eventignore'	  'ei'	    autocommand events that are ignored
 'expandtab'	  'et'	    use spaces when <Tab> is inserted
-'exrc'		  'ex'	    read .nvimrc and .exrc in the current directory
+'exrc'		  'ex'	    read init files in the current directory
 'fileencoding'	  'fenc'    file encoding for multibyte text
 'fileencodings'   'fencs'   automatically detected character encodings
 'fileformat'	  'ff'	    file format used for file I/O
@@ -706,6 +705,7 @@ Short explanation of each option:		*option-list*
 'fileignorecase'  'fic'     ignore case when using file names
 'filetype'	  'ft'	    type of file, used for autocommands
 'fillchars'	  'fcs'     characters to use for displaying special items
+'findfunc'	  'ffu'     function to be called for the |:find| command
 'fixendofline'	  'fixeol'  make sure last line in file has <EOL>
 'foldclose'	  'fcl'     close a fold when the cursor leaves it
 'foldcolumn'	  'fdc'     width of the column used to indicate folds
@@ -738,10 +738,8 @@ Short explanation of each option:		*option-list*
 'helpheight'	  'hh'	    minimum height of a new help window
 'helplang'	  'hlg'     preferred help languages
 'hidden'	  'hid'     don't unload buffer when it is |abandon|ed
-'hlsearch'	  'hls'     highlight matches with last search pattern
 'history'	  'hi'	    number of command-lines that are remembered
-'hkmap'		  'hk'	    Hebrew keyboard mapping
-'hkmapp'	  'hkp'     phonetic Hebrew keyboard mapping
+'hlsearch'	  'hls'     highlight matches with last search pattern
 'icon'			    let Vim set the text of the window icon
 'iconstring'		    string to use for the Vim icon text
 'ignorecase'	  'ic'	    ignore case in search patterns
@@ -800,6 +798,7 @@ Short explanation of each option:		*option-list*
 'mousefocus'	  'mousef'  keyboard focus follows the mouse
 'mousehide'	  'mh'	    hide mouse pointer while typing
 'mousemodel'	  'mousem'  changes meaning of mouse buttons
+'mousemoveevent'  'mousemev'  report mouse moves with <MouseMove>
 'mousescroll'		    amount to scroll by when scrolling with a mouse
 'mouseshape'	  'mouses'  shape of the mouse pointer in different modes
 'mousetime'	  'mouset'  max time between mouse double-click
@@ -811,23 +810,12 @@ Short explanation of each option:		*option-list*
 'operatorfunc'	  'opfunc'  function to be called for |g@| operator
 'packpath'	  'pp'      list of directories used for packages
 'paragraphs'	  'para'    nroff macros that separate paragraphs
-'paste'			    allow pasting text
-'pastetoggle'	  'pt'	    key code that causes 'paste' to toggle
 'patchexpr'	  'pex'     expression used to patch a file
 'patchmode'	  'pm'	    keep the oldest version of a file
 'path'		  'pa'	    list of directories searched with "gf" et.al.
 'preserveindent'  'pi'	    preserve the indent structure when reindenting
 'previewheight'   'pvh'     height of the preview window
-'previewpopup'    'pvp'     use popup window for preview
 'previewwindow'   'pvw'     identifies the preview window
-'printdevice'	  'pdev'    name of the printer to be used for :hardcopy
-'printencoding'   'penc'    encoding to be used for printing
-'printexpr'	  'pexpr'   expression used to print PostScript for :hardcopy
-'printfont'	  'pfn'     name of the font to be used for :hardcopy
-'printheader'	  'pheader' format of the header used for :hardcopy
-'printmbcharset'  'pmbcs'   CJK character set to be used for :hardcopy
-'printmbfont'	  'pmbfn'   font names to be used for CJK output of :hardcopy
-'printoptions'	  'popt'    controls the format of :hardcopy output
 'pumheight'	  'ph'	    maximum number of items to show in the popup menu
 'pumwidth'	  'pw'	    minimum width of the popup menu
 'pyxversion'	  'pyx'	    Python version used for pyx* commands
@@ -867,7 +855,8 @@ Short explanation of each option:		*option-list*
 'shiftwidth'	  'sw'	    number of spaces to use for (auto)indent step
 'shortmess'	  'shm'     list of flags, reduce length of messages
 'showbreak'	  'sbr'     string to use at the start of wrapped lines
-'showcmd'	  'sc'	    show (partial) command in status line
+'showcmd'	  'sc'	    show (partial) command somewhere
+'showcmdloc'	  'sloc'    where to show (partial) command
 'showfulltag'	  'sft'     show full tag pattern when completing tag
 'showmatch'	  'sm'	    briefly jump to matching bracket if insert one
 'showmode'	  'smd'     message on status line to show current mode
@@ -878,6 +867,7 @@ Short explanation of each option:		*option-list*
 'smartcase'	  'scs'     no ignore case when pattern has uppercase
 'smartindent'	  'si'	    smart autoindenting for C programs
 'smarttab'	  'sta'     use 'shiftwidth' when inserting <Tab>
+'smoothscroll'	  'sms'     scroll by screen lines when 'wrap' is set
 'softtabstop'	  'sts'     number of spaces that <Tab> uses while editing
 'spell'			    enable spell checking
 'spellcapcheck'   'spc'     pattern to locate end of a sentence
@@ -889,6 +879,7 @@ Short explanation of each option:		*option-list*
 'splitkeep'	  'spk'     determines scroll behavior for split windows
 'splitright'	  'spr'     new window is put right of the current one
 'startofline'	  'sol'     commands move cursor to first non-blank in line
+'statuscolumn'	  'stc'	    custom format for the status column
 'statusline'	  'stl'     custom format for the status line
 'suffixes'	  'su'	    suffixes that are ignored with multiple match
 'suffixesadd'	  'sua'     suffixes added when searching for a file
@@ -896,17 +887,20 @@ Short explanation of each option:		*option-list*
 'switchbuf'	  'swb'     sets behavior when switching to another buffer
 'synmaxcol'	  'smc'     maximum column to find syntax items
 'syntax'	  'syn'     syntax to be loaded for current buffer
+'tabclose'	  'tcl'     which tab page to focus when closing a tab
 'tabline'	  'tal'     custom format for the console tab pages line
 'tabpagemax'	  'tpm'     maximum number of tab pages for |-p| and "tab all"
 'tabstop'	  'ts'	    number of spaces that <Tab> in file uses
 'tagbsearch'	  'tbs'     use binary searching in tags files
 'tagcase'	  'tc'      how to handle case when searching in tags files
+'tagfunc'	  'tfu'	    function to get list of tag matches
 'taglength'	  'tl'	    number of significant characters for a tag
 'tagrelative'	  'tr'	    file names in tag file are relative
 'tags'		  'tag'     list of file names used by the tag command
 'tagstack'	  'tgst'    push tags onto the tag stack
 'term'			    name of the terminal
 'termbidi'	  'tbidi'   terminal takes care of bi-directionality
+'termguicolors'	  'tgc'     enable 24-bit RGB color in the TUI
 'textwidth'	  'tw'	    maximum width of text that is being inserted
 'thesaurus'	  'tsr'     list of thesaurus files for keyword completion
 'thesaurusfunc'	  'tsrfu'   function to be used for thesaurus completion
@@ -945,10 +939,11 @@ Short explanation of each option:		*option-list*
 'wildoptions'	  'wop'     specifies how command line completion is done
 'winaltkeys'	  'wak'     when the windows system handles ALT keys
 'window'	  'wi'	    nr of lines to scroll for CTRL-F and CTRL-B
-'winheight'	  'wh'	    minimum number of lines for the current window
-'winhighlight'	  'winhl'   window-local highlighting
+'winfixbuf'	  'wfb'     keep window focused on a single buffer
 'winfixheight'	  'wfh'     keep window height when opening/closing windows
 'winfixwidth'	  'wfw'     keep window width when opening/closing windows
+'winheight'	  'wh'	    minimum number of lines for the current window
+'winhighlight'	  'winhl'   window-local highlighting
 'winminheight'	  'wmh'     minimum number of lines for any window
 'winminwidth'	  'wmw'     minimal number of columns for any window
 'winwidth'	  'wiw'     minimal number of columns for current window
@@ -1146,7 +1141,7 @@ Context-sensitive completion on the command-line:
 |-b|	-b		    binary mode
 |-l|	-l		    lisp mode
 |-A|	-A		    Arabic mode ('arabic' is set)
-|-H|	-H		    Hebrew mode ('hkmap' and 'rightleft' are set)
+|-H|	-H		    Hebrew mode (Hebrew keymap & 'rightleft' are set)
 |-V|	-V		    Verbose, give informative messages
 |-r|	-r		    give list of swap files
 |-r|	-r {file} ..	    recover aborted edit session

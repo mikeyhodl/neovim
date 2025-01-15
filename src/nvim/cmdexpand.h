@@ -1,10 +1,11 @@
-#ifndef NVIM_CMDEXPAND_H
-#define NVIM_CMDEXPAND_H
+#pragma once
 
-#include "nvim/eval/typval.h"
-#include "nvim/ex_getln.h"
-#include "nvim/garray.h"
-#include "nvim/types.h"
+#include "nvim/cmdexpand_defs.h"  // IWYU pragma: keep
+#include "nvim/eval/typval_defs.h"  // IWYU pragma: keep
+#include "nvim/ex_getln_defs.h"  // IWYU pragma: keep
+#include "nvim/garray_defs.h"  // IWYU pragma: keep
+#include "nvim/regexp_defs.h"  // IWYU pragma: keep
+#include "nvim/types_defs.h"  // IWYU pragma: keep
 
 // Values for nextwild() and ExpandOne().  See ExpandOne() for meaning.
 
@@ -19,8 +20,8 @@ enum {
   WILD_ALL_KEEP    = 8,
   WILD_CANCEL      = 9,
   WILD_APPLY       = 10,
-  // WILD_PAGEUP   = 11, not ported yet
-  // WILD_PAGEDOWN = 12, not ported yet
+  WILD_PAGEUP      = 11,
+  WILD_PAGEDOWN    = 12,
   WILD_PUM_WANT    = 13,
 };
 
@@ -44,4 +45,3 @@ enum {
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "cmdexpand.h.generated.h"
 #endif
-#endif  // NVIM_CMDEXPAND_H

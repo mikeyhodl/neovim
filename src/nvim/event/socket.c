@@ -1,24 +1,25 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <assert.h>
-#include <stdint.h>
+#include <inttypes.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
 #include <uv.h>
 
-#include "nvim/ascii.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/charset.h"
+#include "nvim/event/defs.h"
 #include "nvim/event/loop.h"
-#include "nvim/event/rstream.h"
+#include "nvim/event/multiqueue.h"
 #include "nvim/event/socket.h"
-#include "nvim/event/wstream.h"
+#include "nvim/event/stream.h"
+#include "nvim/gettext_defs.h"
 #include "nvim/log.h"
-#include "nvim/macros.h"
 #include "nvim/main.h"
 #include "nvim/memory.h"
-#include "nvim/os/os.h"
+#include "nvim/os/fs.h"
+#include "nvim/os/os_defs.h"
 #include "nvim/path.h"
-#include "nvim/strings.h"
-#include "nvim/vim.h"
+#include "nvim/types_defs.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "event/socket.c.generated.h"
@@ -34,7 +35,7 @@ int socket_watcher_init(Loop *loop, SocketWatcher *watcher, const char *endpoint
   if (host_end && addr != host_end) {
     // Split user specified address into two strings, addr(hostname) and port.
     // The port part in watcher->addr will be updated later.
-    *host_end = '\0';
+    *host_end = NUL;
     char *port = host_end + 1;
     intmax_t iport;
 
@@ -63,10 +64,10 @@ int socket_watcher_init(Loop *loop, SocketWatcher *watcher, const char *endpoint
 
     uv_tcp_init(&loop->uv, &watcher->uv.tcp.handle);
     uv_tcp_nodelay(&watcher->uv.tcp.handle, true);
-    watcher->stream = STRUCT_CAST(uv_stream_t, &watcher->uv.tcp.handle);
+    watcher->stream = (uv_stream_t *)(&watcher->uv.tcp.handle);
   } else {
     uv_pipe_init(&loop->uv, &watcher->uv.pipe.handle, 0);
-    watcher->stream = STRUCT_CAST(uv_stream_t, &watcher->uv.pipe.handle);
+    watcher->stream = (uv_stream_t *)(&watcher->uv.pipe.handle);
   }
 
   watcher->stream->data = watcher;
@@ -101,9 +102,8 @@ int socket_watcher_start(SocketWatcher *watcher, int backlog, socket_cb cb)
         // contain 0 in this case, unless uv_tcp_getsockname() is used first.
         uv_tcp_getsockname(&watcher->uv.tcp.handle, (struct sockaddr *)&sas,
                            &(int){ sizeof(sas) });
-        uint16_t port = (uint16_t)((sas.ss_family == AF_INET)
-                                   ? (STRUCT_CAST(struct sockaddr_in, &sas))->sin_port
-                                   : (STRUCT_CAST(struct sockaddr_in6, &sas))->sin6_port);
+        uint16_t port = (sas.ss_family == AF_INET) ? ((struct sockaddr_in *)(&sas))->sin_port
+                                                   : ((struct sockaddr_in6 *)(&sas))->sin6_port;
         // v:servername uses the string from watcher->addr
         size_t len = strlen(watcher->addr);
         snprintf(watcher->addr + len, sizeof(watcher->addr) - len, ":%" PRIu16,
@@ -135,17 +135,17 @@ int socket_watcher_start(SocketWatcher *watcher, int backlog, socket_cb cb)
   return 0;
 }
 
-int socket_watcher_accept(SocketWatcher *watcher, Stream *stream)
+int socket_watcher_accept(SocketWatcher *watcher, RStream *stream)
   FUNC_ATTR_NONNULL_ARG(1) FUNC_ATTR_NONNULL_ARG(2)
 {
   uv_stream_t *client;
 
   if (watcher->stream->type == UV_TCP) {
-    client = STRUCT_CAST(uv_stream_t, &stream->uv.tcp);
+    client = (uv_stream_t *)(&stream->s.uv.tcp);
     uv_tcp_init(watcher->uv.tcp.handle.loop, (uv_tcp_t *)client);
     uv_tcp_nodelay((uv_tcp_t *)client, true);
   } else {
-    client = STRUCT_CAST(uv_stream_t, &stream->uv.pipe);
+    client = (uv_stream_t *)&stream->s.uv.pipe;
     uv_pipe_init(watcher->uv.pipe.handle.loop, (uv_pipe_t *)client, 0);
   }
 
@@ -156,7 +156,7 @@ int socket_watcher_accept(SocketWatcher *watcher, Stream *stream)
     return result;
   }
 
-  stream_init(NULL, stream, -1, client);
+  stream_init(NULL, &stream->s, -1, client);
   return 0;
 }
 
@@ -164,7 +164,7 @@ void socket_watcher_close(SocketWatcher *watcher, socket_close_cb cb)
   FUNC_ATTR_NONNULL_ARG(1)
 {
   watcher->close_cb = cb;
-  uv_close(STRUCT_CAST(uv_handle_t, watcher->stream), close_cb);
+  uv_close((uv_handle_t *)watcher->stream, close_cb);
 }
 
 static void connection_event(void **argv)
@@ -177,8 +177,7 @@ static void connection_event(void **argv)
 static void connection_cb(uv_stream_t *handle, int status)
 {
   SocketWatcher *watcher = handle->data;
-  CREATE_EVENT(watcher->events, connection_event, 2, watcher,
-               (void *)(uintptr_t)status);
+  CREATE_EVENT(watcher->events, connection_event, watcher, (void *)(uintptr_t)status);
 }
 
 static void close_cb(uv_handle_t *handle)
@@ -198,7 +197,7 @@ static void connect_cb(uv_connect_t *req, int status)
   }
 }
 
-bool socket_connect(Loop *loop, Stream *stream, bool is_tcp, const char *address, int timeout,
+bool socket_connect(Loop *loop, RStream *stream, bool is_tcp, const char *address, int timeout,
                     const char **error)
 {
   bool success = false;
@@ -207,7 +206,7 @@ bool socket_connect(Loop *loop, Stream *stream, bool is_tcp, const char *address
   req.data = &status;
   uv_stream_t *uv_stream;
 
-  uv_tcp_t *tcp = &stream->uv.tcp;
+  uv_tcp_t *tcp = &stream->s.uv.tcp;
   uv_getaddrinfo_t addr_req;
   addr_req.addrinfo = NULL;
   const struct addrinfo *addrinfo = NULL;
@@ -223,7 +222,7 @@ bool socket_connect(Loop *loop, Stream *stream, bool is_tcp, const char *address
 
     const struct addrinfo hints = { .ai_family = AF_UNSPEC,
                                     .ai_socktype = SOCK_STREAM,
-                                    .ai_flags  = AI_NUMERICSERV };
+                                    .ai_flags = AI_NUMERICSERV };
     int retval = uv_getaddrinfo(&loop->uv, &addr_req, NULL,
                                 addr, host_end + 1, &hints);
     if (retval != 0) {
@@ -238,15 +237,15 @@ tcp_retry:
     uv_tcp_connect(&req,  tcp, addrinfo->ai_addr, connect_cb);
     uv_stream = (uv_stream_t *)tcp;
   } else {
-    uv_pipe_t *pipe = &stream->uv.pipe;
+    uv_pipe_t *pipe = &stream->s.uv.pipe;
     uv_pipe_init(&loop->uv, pipe, 0);
     uv_pipe_connect(&req,  pipe, address, connect_cb);
-    uv_stream = STRUCT_CAST(uv_stream_t, pipe);
+    uv_stream = (uv_stream_t *)pipe;
   }
   status = 1;
   LOOP_PROCESS_EVENTS_UNTIL(&main_loop, NULL, timeout, status != 1);
-  if (status == 0) {  // -V547
-    stream_init(NULL, stream, -1, uv_stream);
+  if (status == 0) {
+    stream_init(NULL, &stream->s, -1, uv_stream);
     success = true;
   } else if (is_tcp && addrinfo->ai_next) {
     addrinfo = addrinfo->ai_next;

@@ -7,7 +7,7 @@
     https://github.com/flathub/io.neovim.nvim
 -->
 <component type="desktop-application">
-  <id>nvim</id>
+  <id>io.neovim.nvim</id>
   <translation type="gettext">nvim</translation>
   <project_license>Apache-2.0</project_license>
   <metadata_license>CC0-1.0</metadata_license>
@@ -26,7 +26,18 @@
   </screenshots>
 
   <releases>
+    <release date="2024-05-16" version="0.10.0"/>
+    <release date="2023-12-30" version="0.9.5"/>
+    <release date="2023-10-09" version="0.9.4"/>
+    <release date="2023-09-07" version="0.9.2"/>
+    <release date="2023-05-29" version="0.9.1"/>
+    <release date="2023-04-07" version="0.9.0"/>
+    <release date="2023-02-02" version="0.8.3"/>
+    <release date="2022-12-29" version="0.8.2"/>
+    <release date="2022-11-14" version="0.8.1"/>
     <release date="2022-09-30" version="0.8.0"/>
+    <release date="2022-06-26" version="0.7.2"/>
+    <release date="2022-06-26" version="0.7.1"/>
     <release date="2022-04-15" version="0.7.0"/>
     <release date="2021-12-31" version="0.6.1"/>
     <release date="2021-11-30" version="0.6.0"/>
@@ -50,11 +61,12 @@
   <launchable type="desktop-id">nvim.desktop</launchable>
   <url type="homepage">https://neovim.io/</url>
   <url type="bugtracker">https://github.com/neovim/neovim/issues</url>
-  <url type="faq">https://github.com/neovim/neovim/wiki/FAQ</url>
+  <url type="faq">https://neovim.io/doc/user/faq.html</url>
   <url type="help">https://neovim.io/doc/</url>
   <url type="donation">https://neovim.io/#sponsor</url>
   <url type="translate">https://github.com/neovim/neovim/tree/master/src/nvim/po</url>
   <provides>
     <binary>nvim</binary>
+    <id>nvim</id>
   </provides>
 </component>

@@ -1,30 +1,30 @@
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local helpers = require('test.functional.helpers')(after_each)
 
-local clear = helpers.clear
-local insert = helpers.insert
-local feed = helpers.feed
-local expect = helpers.expect
-local eq = helpers.eq
-local map = helpers.tbl_map
-local filter = helpers.tbl_filter
-local feed_command = helpers.feed_command
-local curbuf_contents = helpers.curbuf_contents
-local funcs = helpers.funcs
-local dedent = helpers.dedent
-local getreg = funcs.getreg
+local clear = n.clear
+local insert = n.insert
+local feed = n.feed
+local expect = n.expect
+local eq = t.eq
+local map = vim.tbl_map
+local filter = vim.tbl_filter
+local feed_command = n.feed_command
+local command = n.command
+local curbuf_contents = n.curbuf_contents
+local fn = n.fn
+local dedent = t.dedent
 
 local function reset()
-  feed_command('enew!')
+  command('bwipe! | new')
   insert([[
   Line of words 1
   Line of words 2]])
-  feed_command('goto 1')
+  command('goto 1')
   feed('itest_string.<esc>u')
-  funcs.setreg('a', 'test_stringa', 'V')
-  funcs.setreg('b', 'test_stringb\ntest_stringb\ntest_stringb', 'b')
-  funcs.setreg('"', 'test_string"', 'v')
-  feed_command('set virtualedit=')
+  fn.setreg('a', 'test_stringa', 'V')
+  fn.setreg('b', 'test_stringb\ntest_stringb\ntest_stringb', 'b')
+  fn.setreg('"', 'test_string"', 'v')
 end
 
 -- We check the last inserted register ". in each of these tests because it is
@@ -36,12 +36,12 @@ describe('put command', function()
   before_each(reset)
 
   local function visual_marks_zero()
-    for _,v in pairs(funcs.getpos("'<")) do
+    for _, v in pairs(fn.getpos("'<")) do
       if v ~= 0 then
         return false
       end
     end
-    for _,v in pairs(funcs.getpos("'>")) do
+    for _, v in pairs(fn.getpos("'>")) do
       if v ~= 0 then
         return false
       end
@@ -52,10 +52,12 @@ describe('put command', function()
   -- {{{ Where test definitions are run
   local function run_test_variations(test_variations, extra_setup)
     reset()
-    if extra_setup then extra_setup() end
+    if extra_setup then
+      extra_setup()
+    end
     local init_contents = curbuf_contents()
-    local init_cursorpos = funcs.getcurpos()
-    local assert_no_change = function (exception_table, after_undo)
+    local init_cursorpos = fn.getcurpos()
+    local assert_no_change = function(exception_table, after_undo)
       expect(init_contents)
       -- When putting the ". register forwards, undo doesn't move
       -- the cursor back to where it was before.
@@ -64,15 +66,17 @@ describe('put command', function()
       -- one place to the right (unless we were at the end of the
       -- line when we pasted).
       if not (exception_table.undo_position and after_undo) then
-        eq(init_cursorpos, funcs.getcurpos())
+        eq(init_cursorpos, fn.getcurpos())
       end
     end
 
     for _, test in pairs(test_variations) do
       it(test.description, function()
-        if extra_setup then extra_setup() end
-        local orig_dotstr = funcs.getreg('.')
-        helpers.ok(visual_marks_zero())
+        if extra_setup then
+          extra_setup()
+        end
+        local orig_dotstr = fn.getreg('.')
+        t.ok(visual_marks_zero())
         -- Make sure every test starts from the same conditions
         assert_no_change(test.exception_table, false)
         local was_cli = test.test_action()
@@ -86,7 +90,7 @@ describe('put command', function()
         -- If we paste the ". register with a count we can't avoid
         -- changing this register, hence avoid this check.
         if not test.exception_table.dot_reg_changed then
-          eq(orig_dotstr, funcs.getreg('.'))
+          eq(orig_dotstr, fn.getreg('.'))
         end
 
         -- Doing something, undoing it, and then redoing it should
@@ -102,7 +106,7 @@ describe('put command', function()
         end
 
         if test.exception_table.undo_position then
-          funcs.setpos('.', init_cursorpos)
+          fn.setpos('.', init_cursorpos)
         end
         if was_cli then
           feed('@:')
@@ -116,8 +120,13 @@ describe('put command', function()
   end -- run_test_variations()
   -- }}}
 
-  local function create_test_defs(test_defs, command_base, command_creator, -- {{{
-                                  expect_base, expect_creator)
+  local function create_test_defs(
+    test_defs,
+    command_base,
+    command_creator, -- {{{
+    expect_base,
+    expect_creator
+  )
     local rettab = {}
     local exceptions
     for _, v in pairs(test_defs) do
@@ -126,8 +135,7 @@ describe('put command', function()
       else
         exceptions = {}
       end
-      table.insert(rettab,
-      {
+      table.insert(rettab, {
         test_action = command_creator(command_base, v[1]),
         test_assertions = expect_creator(expect_base, v[2]),
         description = v[3],
@@ -144,10 +152,10 @@ describe('put command', function()
     -- it was in.
     -- This returns the cursor position that would leave the 'x' in that
     -- place if we feed 'ix<esc>' and the string existed before it.
-    for linenum, line in pairs(funcs.split(expect_string, '\n', 1)) do
+    for linenum, line in pairs(fn.split(expect_string, '\n', 1)) do
       local column = line:find('x')
       if column then
-        return {linenum, column}, expect_string:gsub('x', '')
+        return { linenum, column }, expect_string:gsub('x', '')
       end
     end
   end -- find_cursor_position() }}}
@@ -177,17 +185,17 @@ describe('put command', function()
     return function(exception_table, after_redo)
       expect(expect_string)
 
-      -- Have to use getcurpos() instead of curwinmeths.get_cursor() in
+      -- Have to use getcurpos() instead of api.nvim_win_get_cursor(0) in
       -- order to account for virtualedit.
       -- We always want the curswant element in getcurpos(), which is
       -- sometimes different to the column element in
-      -- curwinmeths.get_cursor().
+      -- api.nvim_win_get_cursor(0).
       -- NOTE: The ".gp command leaves the cursor after the pasted text
       -- when running, but does not when the command is redone with the
       -- '.' command.
       if not (exception_table.redo_position and after_redo) then
-        local actual_position = funcs.getcurpos()
-        eq(cursor_position, {actual_position[2], actual_position[5]})
+        local actual_position = fn.getcurpos()
+        eq(cursor_position, { actual_position[2], actual_position[5] })
       end
     end
   end -- expect_creator() }}}
@@ -196,13 +204,13 @@ describe('put command', function()
   local function copy_def(def)
     local rettab = { '', {}, '', nil }
     rettab[1] = def[1]
-    for k,v in pairs(def[2]) do
+    for k, v in pairs(def[2]) do
       rettab[2][k] = v
     end
     rettab[3] = def[3]
     if def[4] then
       rettab[4] = {}
-      for k,v in pairs(def[4]) do
+      for k, v in pairs(def[4]) do
         rettab[4][k] = v
       end
     end
@@ -212,52 +220,52 @@ describe('put command', function()
   local normal_command_defs = {
     {
       'p',
-      {cursor_after = false, put_backwards = false, dot_register = false},
+      { cursor_after = false, put_backwards = false, dot_register = false },
       'pastes after cursor with p',
     },
     {
       'gp',
-      {cursor_after = true, put_backwards = false, dot_register = false},
+      { cursor_after = true, put_backwards = false, dot_register = false },
       'leaves cursor after text with gp',
     },
     {
       '".p',
-      {cursor_after = false, put_backwards = false, dot_register = true},
+      { cursor_after = false, put_backwards = false, dot_register = true },
       'works with the ". register',
     },
     {
       '".gp',
-      {cursor_after = true, put_backwards = false, dot_register = true},
+      { cursor_after = true, put_backwards = false, dot_register = true },
       'gp works with the ". register',
-      {redo_position = true},
+      { redo_position = true },
     },
     {
       'P',
-      {cursor_after = false, put_backwards = true, dot_register = false},
+      { cursor_after = false, put_backwards = true, dot_register = false },
       'pastes before cursor with P',
     },
     {
       'gP',
-      {cursor_after = true, put_backwards = true, dot_register = false},
+      { cursor_after = true, put_backwards = true, dot_register = false },
       'gP pastes before cursor and leaves cursor after text',
     },
     {
       '".P',
-      {cursor_after = false, put_backwards = true, dot_register = true},
+      { cursor_after = false, put_backwards = true, dot_register = true },
       'P works with ". register',
     },
     {
       '".gP',
-      {cursor_after = true, put_backwards = true, dot_register = true},
+      { cursor_after = true, put_backwards = true, dot_register = true },
       'gP works with ". register',
-      {redo_position = true},
+      { redo_position = true },
     },
   }
 
   -- Add a definition applying a count for each definition above.
   -- Could do this for each transformation (p -> P, p -> gp etc), but I think
   -- it's neater this way (balance between being explicit and too verbose).
-  for i = 1,#normal_command_defs do
+  for i = 1, #normal_command_defs do
     local cur = normal_command_defs[i]
 
     -- Make modified copy of current definition that includes a count.
@@ -280,35 +288,36 @@ describe('put command', function()
   local ex_command_defs = {
     {
       'put',
-      {put_backwards = false, dot_register = false},
+      { put_backwards = false, dot_register = false },
       'pastes linewise forwards with :put',
     },
     {
       'put!',
-      {put_backwards = true, dot_register = false},
+      { put_backwards = true, dot_register = false },
       'pastes linewise backwards with :put!',
     },
     {
       'put .',
-      {put_backwards = false, dot_register = true},
+      { put_backwards = false, dot_register = true },
       'pastes linewise with the dot register',
     },
     {
       'put! .',
-      {put_backwards = true, dot_register = true},
+      { put_backwards = true, dot_register = true },
       'pastes linewise backwards with the dot register',
     },
   }
 
   local function non_dotdefs(def_table)
-    return filter(function(d) return not d[2].dot_register end, def_table)
+    return filter(function(d)
+      return not d[2].dot_register
+    end, def_table)
   end
 
   -- }}}
 
   -- Conversion functions {{{
-  local function convert_charwise(expect_base, conversion_table,
-                                       virtualedit_end, visual_put)
+  local function convert_charwise(expect_base, conversion_table, virtualedit_end, visual_put)
     expect_base = dedent(expect_base)
     -- There is no difference between 'P' and 'p' when VIsual_active
     if not visual_put then
@@ -325,7 +334,7 @@ describe('put command', function()
     end
     if conversion_table.count > 1 then
       local rep_string = 'test_string"'
-      local extra_puts =  rep_string:rep(conversion_table.count - 1)
+      local extra_puts = rep_string:rep(conversion_table.count - 1)
       expect_base = expect_base:gsub('test_stringx"', extra_puts .. 'test_stringx"')
     end
     if conversion_table.cursor_after then
@@ -341,7 +350,7 @@ describe('put command', function()
     local prev_line
     local rettab = {}
     local string_found = false
-    for _, line in pairs(funcs.split(string, '\n', 1)) do
+    for _, line in pairs(fn.split(string, '\n', 1)) do
       if line:find('test_string') then
         string_found = true
         table.insert(rettab, line)
@@ -396,7 +405,7 @@ describe('put command', function()
         indent = ''
       end
       local rep_string = indent .. p_str .. '\n'
-      local extra_puts =  rep_string:rep(conversion_table.count - 1)
+      local extra_puts = rep_string:rep(conversion_table.count - 1)
       local orig_string, new_string
       if conversion_table.cursor_after then
         orig_string = indent .. p_str .. '\nx'
@@ -421,8 +430,13 @@ describe('put command', function()
     return orig_line:sub(1, prev_end - 1) .. 'x' .. orig_line:sub(prev_end)
   end
 
-  local function convert_blockwise(expect_base, conversion_table, visual,
-                                   use_b, trailing_whitespace)
+  local function convert_blockwise(
+    expect_base,
+    conversion_table,
+    visual,
+    use_b,
+    trailing_whitespace
+  )
     expect_base = dedent(expect_base)
     local p_str = 'test_string"'
     if use_b then
@@ -453,11 +467,9 @@ describe('put command', function()
 
     if conversion_table.count and conversion_table.count > 1 then
       local p_pattern = p_str:gsub('%.', '%%.')
-      expect_base = expect_base:gsub(p_pattern,
-                                     p_str:rep(conversion_table.count))
-      expect_base = expect_base:gsub('test_stringx([b".])',
-                                     p_str:rep(conversion_table.count - 1)
-                                     .. '%0')
+      expect_base = expect_base:gsub(p_pattern, p_str:rep(conversion_table.count))
+      expect_base =
+        expect_base:gsub('test_stringx([b".])', p_str:rep(conversion_table.count - 1) .. '%0')
     end
 
     if conversion_table.cursor_after then
@@ -465,7 +477,7 @@ describe('put command', function()
         local prev_line
         local rettab = {}
         local prev_in_block = false
-        for _, line in pairs(funcs.split(expect_base, '\n', 1)) do
+        for _, line in pairs(fn.split(expect_base, '\n', 1)) do
           if line:find('test_string') then
             if prev_line then
               prev_line = prev_line:gsub('x', '')
@@ -497,8 +509,13 @@ describe('put command', function()
   -- }}}
 
   -- Convenience functions {{{
-  local function run_normal_mode_tests(test_string, base_map, extra_setup,
-                                       virtualedit_end, selection_string)
+  local function run_normal_mode_tests(
+    test_string,
+    base_map,
+    extra_setup,
+    virtualedit_end,
+    selection_string
+  )
     local function convert_closure(e, c)
       return convert_charwise(e, c, virtualedit_end, selection_string)
     end
@@ -508,10 +525,10 @@ describe('put command', function()
         test_expect(exception_table, after_redo)
         if selection_string then
           if not conversion_table.put_backwards then
-            eq(selection_string, getreg('"'))
+            eq(selection_string, fn.getreg('"'))
           end
         else
-          eq('test_string"', getreg('"'))
+          eq('test_string"', fn.getreg('"'))
         end
       end
     end
@@ -533,8 +550,12 @@ describe('put command', function()
 
   local function run_linewise_tests(expect_base, base_command, extra_setup)
     local linewise_test_defs = create_test_defs(
-        ex_command_defs, base_command,
-        create_put_action, expect_base, convert_linewiseer)
+      ex_command_defs,
+      base_command,
+      create_put_action,
+      expect_base,
+      convert_linewiseer
+    )
     run_test_variations(linewise_test_defs, extra_setup)
   end -- run_linewise_tests()
   -- }}}
@@ -546,7 +567,8 @@ describe('put command', function()
     Line of words 2]]
     run_normal_mode_tests(expect_string, 'p')
 
-    run_linewise_tests([[
+    run_linewise_tests(
+      [[
       Line of words 1
       xtest_string"
       Line of words 2]],
@@ -586,11 +608,12 @@ describe('put command', function()
     run_test_variations(
       create_test_defs(
         linewise_put_defs,
-        'put a', create_put_action,
-        base_expect_string, convert_linewiseer
+        'put a',
+        create_put_action,
+        base_expect_string,
+        convert_linewiseer
       )
     )
-
   end)
 
   describe('blockwise register', function()
@@ -601,18 +624,13 @@ describe('put command', function()
      test_stringb]]
 
     local function expect_block_creator(expect_base, conversion_table)
-      return expect_creator(function(e,c) return convert_blockwise(e,c,nil,true) end,
-                    expect_base, conversion_table)
+      return expect_creator(function(e, c)
+        return convert_blockwise(e, c, nil, true)
+      end, expect_base, conversion_table)
     end
 
     run_test_variations(
-      create_test_defs(
-        blockwise_put_defs,
-        '"bp',
-        create_p_action,
-        test_base,
-        expect_block_creator
-      )
+      create_test_defs(blockwise_put_defs, '"bp', create_p_action, test_base, expect_block_creator)
     )
   end)
 
@@ -633,18 +651,18 @@ describe('put command', function()
 
   describe('linewise paste with autoindent', function()
     -- luacheck: ignore
-    run_linewise_tests([[
+    run_linewise_tests(
+      [[
         Line of words 1
         	Line of words 2
         xtest_string"]],
-        'put'
-      ,
+      'put',
       function()
-        funcs.setline('$', '	Line of words 2')
+        fn.setline('$', '	Line of words 2')
         -- Set curswant to '8' to be at the end of the tab character
         -- This is where the cursor is put back after the 'u' command.
-        funcs.setpos('.', {0, 2, 1, 0, 8})
-        feed_command('set autoindent')
+        fn.setpos('.', { 0, 2, 1, 0, 8 })
+        command('set autoindent')
       end
     )
   end)
@@ -654,9 +672,9 @@ describe('put command', function()
     Line of words 1
        test_stringx"     Line of words 2]]
     run_normal_mode_tests(test_string, 'p', function()
-      funcs.setline('$', '	Line of words 2')
-      feed_command('set virtualedit=all')
-      funcs.setpos('.', {0, 2, 1, 2, 3})
+      fn.setline('$', '	Line of words 2')
+      command('setlocal virtualedit=all')
+      fn.setpos('.', { 0, 2, 1, 2, 3 })
     end)
   end)
 
@@ -666,9 +684,9 @@ describe('put command', function()
     Line of words 1  test_stringx"
     	Line of words 2]]
     run_normal_mode_tests(test_string, 'p', function()
-      funcs.setline('$', '	Line of words 2')
-      feed_command('set virtualedit=all')
-      funcs.setpos('.', {0, 1, 16, 1, 17})
+      fn.setline('$', '	Line of words 2')
+      command('setlocal virtualedit=all')
+      fn.setpos('.', { 0, 1, 16, 1, 17 })
     end, true)
   end)
 
@@ -680,12 +698,10 @@ describe('put command', function()
       run_normal_mode_tests(test_string, 'v2ep', nil, nil, 'Line of')
     end)
     describe('over trailing newline', function()
-      local test_string =  'Line of test_stringx"Line of words 2'
+      local test_string = 'Line of test_stringx"Line of words 2'
       run_normal_mode_tests(test_string, 'v$p', function()
-        funcs.setpos('.', {0, 1, 9, 0, 9})
-      end,
-      nil,
-      'words 1\n')
+        fn.setpos('.', { 0, 1, 9, 0, 9 })
+      end, nil, 'words 1\n')
     end)
     describe('linewise mode', function()
       local test_string = [[
@@ -694,8 +710,7 @@ describe('put command', function()
       local function expect_vis_linewise(expect_base, conversion_table)
         return expect_creator(function(e, c)
           return convert_linewise(e, c, nil, nil)
-        end,
-        expect_base, conversion_table)
+        end, expect_base, conversion_table)
       end
       run_test_variations(
         create_test_defs(
@@ -705,19 +720,20 @@ describe('put command', function()
           test_string,
           expect_vis_linewise
         ),
-        function() funcs.setpos('.', {0, 1, 1, 0, 1}) end
+        function()
+          fn.setpos('.', { 0, 1, 1, 0, 1 })
+        end
       )
 
       describe('with whitespace at bol', function()
         local function expect_vis_lineindented(expect_base, conversion_table)
           local test_expect = expect_creator(function(e, c)
-              return convert_linewise(e, c, nil, nil, '    ')
-            end,
-            expect_base, conversion_table)
+            return convert_linewise(e, c, nil, nil, '    ')
+          end, expect_base, conversion_table)
           return function(exception_table, after_redo)
             test_expect(exception_table, after_redo)
             if not conversion_table.put_backwards then
-              eq('Line of words 1\n', getreg('"'))
+              eq('Line of words 1\n', fn.getreg('"'))
             end
           end
         end
@@ -734,11 +750,10 @@ describe('put command', function()
           ),
           function()
             feed('i    test_string.<esc>u')
-            funcs.setreg('"', '    test_string"', 'v')
+            fn.setreg('"', '    test_string"', 'v')
           end
         )
       end)
-
     end)
 
     describe('blockwise visual mode', function()
@@ -748,39 +763,37 @@ describe('put command', function()
 
       local function expect_block_creator(expect_base, conversion_table)
         local test_expect = expect_creator(function(e, c)
-            return convert_blockwise(e, c, true)
-          end, expect_base, conversion_table)
-        return function(e,c)
-          test_expect(e,c)
+          return convert_blockwise(e, c, true)
+        end, expect_base, conversion_table)
+        return function(e, c)
+          test_expect(e, c)
           if not conversion_table.put_backwards then
-            eq('Lin\nLin', getreg('"'))
+            eq('Lin\nLin', fn.getreg('"'))
           end
         end
       end
 
       local select_down_test_defs = create_test_defs(
-          normal_command_defs,
-          '<C-v>jllp',
-          create_p_action,
-          test_base,
-          expect_block_creator
+        normal_command_defs,
+        '<C-v>jllp',
+        create_p_action,
+        test_base,
+        expect_block_creator
       )
       run_test_variations(select_down_test_defs)
-
 
       -- Undo and redo of a visual block put leave the cursor in the top
       -- left of the visual block area no matter where the cursor was
       -- when it started.
       local undo_redo_no = map(function(table)
-          local rettab = copy_def(table)
-          if not rettab[4] then
-            rettab[4] = {}
-          end
-          rettab[4].undo_position = true
-          rettab[4].redo_position = true
-          return rettab
-        end,
-        normal_command_defs)
+        local rettab = copy_def(table)
+        if not rettab[4] then
+          rettab[4] = {}
+        end
+        rettab[4].undo_position = true
+        rettab[4].redo_position = true
+        return rettab
+      end, normal_command_defs)
 
       -- Selection direction doesn't matter
       run_test_variations(
@@ -791,7 +804,9 @@ describe('put command', function()
           test_base,
           expect_block_creator
         ),
-        function() funcs.setpos('.', {0, 2, 1, 0, 1}) end
+        function()
+          fn.setpos('.', { 0, 2, 1, 0, 1 })
+        end
       )
 
       describe('blockwise cursor after undo', function()
@@ -801,62 +816,45 @@ describe('put command', function()
         -- the same pattern as everything else.
         -- Here we fix this by directly checking the undo/redo position
         -- in the test_assertions of our test definitions.
-        local function assertion_creator(_,_)
-          return function(_,_)
+        local function assertion_creator(_, _)
+          return function(_, _)
             feed('u')
             -- Have to use feed('u') here to set curswant, because
             -- ex_undo() doesn't do that.
-            eq({0, 1, 1, 0, 1}, funcs.getcurpos())
+            eq({ 0, 1, 1, 0, 1 }, fn.getcurpos())
             feed('<C-r>')
-            eq({0, 1, 1, 0, 1}, funcs.getcurpos())
+            eq({ 0, 1, 1, 0, 1 }, fn.getcurpos())
           end
         end
 
         run_test_variations(
-          create_test_defs(
-            undo_redo_no,
-            '<C-v>kllp',
-            create_p_action,
-            test_base,
-            assertion_creator
-          ),
-          function() funcs.setpos('.', {0, 2, 1, 0, 1}) end
+          create_test_defs(undo_redo_no, '<C-v>kllp', create_p_action, test_base, assertion_creator),
+          function()
+            fn.setpos('.', { 0, 2, 1, 0, 1 })
+          end
         )
       end)
     end)
-
 
     describe("with 'virtualedit'", function()
       describe('splitting a tab character', function()
         local base_expect_string = [[
         Line of words 1
           test_stringx"     Line of words 2]]
-        run_normal_mode_tests(
-          base_expect_string,
-          'vp',
-          function()
-            funcs.setline('$', '	Line of words 2')
-            feed_command('set virtualedit=all')
-            funcs.setpos('.', {0, 2, 1, 2, 3})
-          end,
-          nil,
-          ' '
-        )
+        run_normal_mode_tests(base_expect_string, 'vp', function()
+          fn.setline('$', '	Line of words 2')
+          command('setlocal virtualedit=all')
+          fn.setpos('.', { 0, 2, 1, 2, 3 })
+        end, nil, ' ')
       end)
       describe('after end of line', function()
         local base_expect_string = [[
         Line of words 1  test_stringx"
         Line of words 2]]
-        run_normal_mode_tests(
-          base_expect_string,
-          'vp',
-          function()
-            feed_command('set virtualedit=all')
-            funcs.setpos('.', {0, 1, 16, 2, 18})
-          end,
-          true,
-          ' '
-        )
+        run_normal_mode_tests(base_expect_string, 'vp', function()
+          command('setlocal virtualedit=all')
+          fn.setpos('.', { 0, 1, 16, 2, 18 })
+        end, true, ' ')
       end)
     end)
   end)
@@ -874,15 +872,17 @@ describe('put command', function()
       	Line of words 1
       Line of words 2]])
       feed('u1go<C-v>j".p')
-      eq([[
+      eq(
+        [[
 	ine of words 1
-	ine of words 2]], curbuf_contents())
+	ine of words 2]],
+        curbuf_contents()
+      )
     end)
 
     local screen
     setup(function()
       screen = Screen.new()
-      screen:attach()
     end)
 
     local function bell_test(actions, should_ring)
@@ -890,52 +890,65 @@ describe('put command', function()
         -- check bell is not set by nvim before the action
         screen:sleep(50)
       end
-      helpers.ok(not screen.bell and not screen.visualbell)
+      t.ok(not screen.bell and not screen.visualbell)
       actions()
-      screen:expect{condition=function()
-        if should_ring then
-          if not screen.bell and not screen.visualbell then
-            error('Bell was not rung after action')
+      screen:expect {
+        condition = function()
+          if should_ring then
+            if not screen.bell and not screen.visualbell then
+              error('Bell was not rung after action')
+            end
+          else
+            if screen.bell or screen.visualbell then
+              error('Bell was rung after action')
+            end
           end
-        else
-          if screen.bell or screen.visualbell then
-            error('Bell was rung after action')
-          end
-        end
-      end, unchanged=(not should_ring)}
+        end,
+        unchanged = not should_ring,
+      }
+      screen.bell = false
+      screen.visualbell = false
     end
 
     it('should not ring the bell with gp at end of line', function()
-      bell_test(function() feed('$".gp') end)
+      bell_test(function()
+        feed('$".gp')
+      end)
 
       -- Even if the last character is a multibyte character.
       reset()
-      funcs.setline(1, 'helloม')
-      bell_test(function() feed('$".gp') end)
+      fn.setline(1, 'helloม')
+      bell_test(function()
+        feed('$".gp')
+      end)
     end)
 
     it('should not ring the bell with gp and end of file', function()
-      funcs.setpos('.', {0, 2, 1, 0})
-      bell_test(function() feed('$vl".gp') end)
+      fn.setpos('.', { 0, 2, 1, 0 })
+      bell_test(function()
+        feed('$vl".gp')
+      end)
     end)
 
     it('should ring the bell when deleting if not appropriate', function()
-        feed_command('goto 2')
-        feed('i<bs><esc>')
-        expect([[
-        ine of words 1
-        Line of words 2]])
-        bell_test(function() feed('".P') end, true)
+      command('goto 2')
+      feed('i<bs><esc>')
+      expect([[
+      ine of words 1
+      Line of words 2]])
+      bell_test(function()
+        feed('".P')
+      end, true)
     end)
 
     it('should restore cursor position after undo of ".p', function()
-      local origpos = funcs.getcurpos()
+      local origpos = fn.getcurpos()
       feed('".pu')
-      eq(origpos, funcs.getcurpos())
+      eq(origpos, fn.getcurpos())
     end)
 
     it("should be unaffected by 'autoindent' with V\".2p", function()
-      feed_command('set autoindent')
+      command('set autoindent')
       feed('i test_string.<esc>u')
       feed('V".2p')
       expect([[
@@ -945,4 +958,3 @@ describe('put command', function()
     end)
   end)
 end)
-

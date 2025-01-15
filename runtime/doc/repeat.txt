@@ -56,7 +56,7 @@ Using the underscore after `:d` avoids clobbering registers or the clipboard.
 This also makes it faster.
 
 Instead of the '/' which surrounds the {pattern}, you can use any other
-single byte character, but not an alphabetic character, '\', '"' or '|'.
+single byte character, but not an alphabetic character, '\', '"', '|' or '!'.
 This is useful if you want to include a '/' in the search pattern or
 replacement string.
 
@@ -96,9 +96,9 @@ where the cursor was before the global command).
 
 The global command sets both the last used search pattern and the last used
 substitute pattern (this is vi compatible).  This makes it easy to globally
-replace a string:
+replace a string: >
 	:g/pat/s//PAT/g
-This replaces all occurrences of "pat" with "PAT".  The same can be done with:
+This replaces all occurrences of "pat" with "PAT".  The same can be done with: >
 	:%s/pat/PAT/g
 Which is two characters shorter!
 
@@ -111,7 +111,7 @@ To abort this type CTRL-C twice.
 ==============================================================================
 Complex repeats						*complex-repeat*
 
-							*q* *recording*
+							*q* *recording* *macro*
 q{0-9a-zA-Z"}		Record typed characters into register {0-9a-zA-Z"}
 			(uppercase to append).  The 'q' command is disabled
 			while executing a register, and it doesn't work inside
@@ -148,9 +148,19 @@ q			Stops recording.
 							*@@* *E748*
 @@			Repeat the previous @{0-9a-z":*} [count] times.
 
+							*v_@-default*
+{Visual}@{0-9a-z".=*+}	In linewise Visual mode, execute the contents of the
+{Visual}@@		register for each selected line.
+			See |visual-repeat|, |default-mappings|.
+
 							*Q*
 Q			Repeat the last recorded register [count] times.
 			See |reg_recorded()|.
+
+							*v_Q-default*
+{Visual}Q		In linewise Visual mode, repeat the last recorded
+			register for each selected line.
+			See |visual-repeat|, |default-mappings|.
 
 							*:@*
 :[addr]@{0-9a-z".=*+}	Execute the contents of register {0-9a-z".=*+} as an Ex
@@ -182,8 +192,11 @@ Using Vim scripts					*using-scripts*
 For writing a Vim script, see chapter 41 of the user manual |usr_41.txt|.
 
 					*:so* *:source* *load-vim-script*
-:[range]so[urce] [file]	Runs |Ex| commands or Lua code (".lua" files) from
-			[file], or current buffer if no [file].
+:[range]so[urce] [file]	Runs |Ex-commands| or Lua code (".lua" files) from
+			[file].
+			If no [file], the current buffer is used and treated
+			as Lua code if 'filetype' is "lua" or its filename
+			ends with ".lua".
 			Triggers the |SourcePre| autocommand.
 							*:source!*
 :[range]so[urce]! {file}
@@ -211,12 +224,10 @@ For writing a Vim script, see chapter 41 of the user manual |usr_41.txt|.
 			When [!] is included, all found files are sourced.
 			Else only the first found file is sourced.
 
-			When [where] is omitted, first 'runtimepath' is
-			searched, then directories under "start" in 'packpath'
-			are searched.
+			When [where] is omitted only 'runtimepath' is used.
 			Other values:
 				START	search only under "start" in 'packpath'
-				OPT 	search only under "opt" in 'packpath'
+				OPT	search only under "opt" in 'packpath'
 				PACK	search under "start" and "opt" in
 					'packpath'
 				ALL	first use 'runtimepath', then search
@@ -224,11 +235,15 @@ For writing a Vim script, see chapter 41 of the user manual |usr_41.txt|.
 
 			When {file} contains wildcards it is expanded to all
 			matching files.  Example: >
-				:runtime! plugin/**/*.vim
-<			This is what Vim uses to load the plugin files when
+				:runtime! plugin/**/*.{vim,lua}
+<			This is what Nvim uses to load the plugin files when
 			starting up.  This similar command: >
-				:runtime plugin/**/*.vim
+				:runtime plugin/**/*.{vim,lua}
 <			would source the first file only.
+
+			For each {file} pattern, if two `.vim` and `.lua` file
+			names match and differ only in extension, the `.vim`
+			file is sourced first.
 
 			When 'verbose' is one or higher, there is a message
 			when no file could be found.
@@ -259,8 +274,8 @@ For writing a Vim script, see chapter 41 of the user manual |usr_41.txt|.
 			'runtimepath'.
 
 			If the filetype detection was already enabled (this
-			is usually done with a "syntax enable" or "filetype
-			on" command in your |init.vim|, or automatically during
+			is usually done with a `syntax enable` or `filetype on`
+			command in your |vimrc|, or automatically during
 			|initialization|), and the package was found in
 			"pack/*/opt/{name}", this command will also look
 			for "{name}/ftdetect/*.vim" files.
@@ -338,6 +353,7 @@ For writing a Vim script, see chapter 41 of the user manual |usr_41.txt|.
 :scr[iptnames]		List all sourced script names, in the order they were
 			first sourced.  The number is used for the script ID
 			|<SID>|.
+			Also see `getscriptinfo()`.
 
 :scr[iptnames][!] {scriptId}			*:script*
 			Edit script {scriptId}.  Although ":scriptnames name"
@@ -431,7 +447,7 @@ Example: the lines >
 		     \:%,
 		     \n:>,
 		     \fb:-
-are interpreted as if they were given in one line:
+are interpreted as if they were given in one line: >
 	:set comments=sr:/*,mb:*,el:*/,://,b:#,:%,n:>,fb:-
 
 All leading whitespace characters in the line before a backslash are ignored.
@@ -524,7 +540,7 @@ the runtime path. Example: >
 Using a package and loading automatically ~
 
 Let's assume your Nvim files are in "~/.local/share/nvim/site" and you want to
-add a package from a zip archive "/tmp/foopack.zip":
+add a package from a zip archive "/tmp/foopack.zip": >
 	% mkdir -p ~/.local/share/nvim/site/pack/foo
 	% cd ~/.local/share/nvim/site/pack/foo
 	% unzip /tmp/foopack.zip
@@ -573,7 +589,7 @@ If the package has an "after" directory, that directory is added to the end of
 Using a single plugin and loading it automatically ~
 
 If you don't have a package but a single plugin, you need to create the extra
-directory level:
+directory level: >
 	% mkdir -p ~/.local/share/nvim/site/pack/foo/start/foobar
 	% cd ~/.local/share/nvim/site/pack/foo/start/foobar
 	% unzip /tmp/someplugin.zip
@@ -643,15 +659,15 @@ up-to-date easily, but it requires a program like "git" to be available.
 You can do both, github can automatically create an archive for a release.
 
 Your directory layout would be like this:
-   start/foobar/plugin/foo.vim    	" always loaded, defines commands
-   start/foobar/plugin/bar.vim    	" always loaded, defines commands
-   start/foobar/autoload/foo.vim  	" loaded when foo command used
-   start/foobar/doc/foo.txt       	" help for foo.vim
-   start/foobar/doc/tags          	" help tags
-   opt/fooextra/plugin/extra.vim  	" optional plugin, defines commands
-   opt/fooextra/autoload/extra.vim  	" loaded when extra command used
-   opt/fooextra/doc/extra.txt  	        " help for extra.vim
-   opt/fooextra/doc/tags  	        " help tags
+   start/foobar/plugin/foo.vim		" always loaded, defines commands
+   start/foobar/plugin/bar.vim		" always loaded, defines commands
+   start/foobar/autoload/foo.vim	" loaded when foo command used
+   start/foobar/doc/foo.txt		" help for foo.vim
+   start/foobar/doc/tags		" help tags
+   opt/fooextra/plugin/extra.vim	" optional plugin, defines commands
+   opt/fooextra/autoload/extra.vim	" loaded when extra command used
+   opt/fooextra/doc/extra.txt		" help for extra.vim
+   opt/fooextra/doc/tags		" help tags
 
 This allows for the user to do: >
 	mkdir ~/.local/share/nvim/site/pack
@@ -951,21 +967,24 @@ For example, to profile the one_script.vim script file: >
 
 
 :prof[ile] start {fname}			*:prof* *:profile* *E750*
-		Start profiling, write the output in {fname} upon exit.
+		Start profiling, write the output in {fname} upon exit or when
+		a `:profile stop` or `:profile dump` command is invoked.
 		"~/" and environment variables in {fname} will be expanded.
 		If {fname} already exists it will be silently overwritten.
 		The variable |v:profiling| is set to one.
 
 :prof[ile] stop
-		Write the logfile and stop profiling.
+		Write the collected profiling information to the logfile and
+		stop profiling. You can use the `:profile start` command to
+		clear the profiling statistics and start profiling again.
 
 :prof[ile] pause
-		Don't profile until the following ":profile continue".  Can be
-		used when doing something that should not be counted (e.g., an
-		external command).  Does not nest.
+		Stop profiling until the next `:profile continue` command.
+		Can be used when doing something that should not be counted
+		(e.g., an external command).  Does not nest.
 
 :prof[ile] continue
-		Continue profiling after ":profile pause".
+		Continue profiling after `:profile pause`.
 
 :prof[ile] func {pattern}
 		Profile function that matches the pattern {pattern}.
@@ -983,16 +1002,24 @@ For example, to profile the one_script.vim script file: >
 		won't work.
 
 :prof[ile] dump
-		Don't wait until exiting Vim and write the current state of
-		profiling to the log immediately.
+		Write the current state of profiling to the logfile
+		immediately.  After running this command, Vim continues to
+		collect the profiling statistics.
 
 :profd[el] ...						*:profd* *:profdel*
 		Stop profiling for the arguments specified. See |:breakdel|
-		for the arguments.
-
+		for the arguments. Examples: >
+			profdel func MyFunc
+			profdel file MyScript.vim
+			profdel here
 
 You must always start with a ":profile start fname" command.  The resulting
-file is written when Vim exits.  Here is an example of the output, with line
+file is written when Vim exits.  For example, to profile one specific
+function: >
+	profile start /tmp/vimprofile
+	profile func MyFunc
+
+Here is an example of the output, with line
 numbers prepended for the explanation:
 
   1 FUNCTION  Test2() ~

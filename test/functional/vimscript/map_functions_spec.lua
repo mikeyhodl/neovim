@@ -1,80 +1,83 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local clear = helpers.clear
-local eq = helpers.eq
-local eval = helpers.eval
-local exec = helpers.exec
-local exec_lua = helpers.exec_lua
-local expect = helpers.expect
-local feed = helpers.feed
-local funcs = helpers.funcs
-local meths = helpers.meths
-local nvim = helpers.nvim
-local source = helpers.source
-local command = helpers.command
-local exec_capture = helpers.exec_capture
-local pcall_err = helpers.pcall_err
+local clear = n.clear
+local eq = t.eq
+local eval = n.eval
+local exec = n.exec
+local exec_lua = n.exec_lua
+local expect = n.expect
+local feed = n.feed
+local fn = n.fn
+local api = n.api
+local source = n.source
+local command = n.command
+local exec_capture = n.exec_capture
+local pcall_err = t.pcall_err
 
 describe('maparg()', function()
   before_each(clear)
 
   local foo_bar_map_table = {
-      lhs='foo',
-      lhsraw='foo',
-      script=0,
-      silent=0,
-      rhs='bar',
-      expr=0,
-      sid=0,
-      buffer=0,
-      nowait=0,
-      mode='n',
-      noremap=1,
-      lnum=0,
-    }
+    lhs = 'foo',
+    lhsraw = 'foo',
+    script = 0,
+    silent = 0,
+    rhs = 'bar',
+    expr = 0,
+    sid = 0,
+    scriptversion = 1,
+    buffer = 0,
+    nowait = 0,
+    mode = 'n',
+    mode_bits = 0x01,
+    abbr = 0,
+    noremap = 1,
+    lnum = 0,
+  }
 
-  it('returns a dictionary', function()
-    nvim('command', 'nnoremap foo bar')
-    eq('bar', funcs.maparg('foo'))
-    eq(foo_bar_map_table, funcs.maparg('foo', 'n', false, true))
+  it('returns a dict', function()
+    command('nnoremap foo bar')
+    eq('bar', fn.maparg('foo'))
+    eq(foo_bar_map_table, fn.maparg('foo', 'n', false, true))
   end)
 
   it('returns 1 for silent when <silent> is used', function()
-    nvim('command', 'nnoremap <silent> foo bar')
-    eq(1, funcs.maparg('foo', 'n', false, true)['silent'])
+    command('nnoremap <silent> foo bar')
+    eq(1, fn.maparg('foo', 'n', false, true)['silent'])
 
-    nvim('command', 'nnoremap baz bat')
-    eq(0, funcs.maparg('baz', 'n', false, true)['silent'])
+    command('nnoremap baz bat')
+    eq(0, fn.maparg('baz', 'n', false, true)['silent'])
   end)
 
   it('returns an empty string when no map is present', function()
-    eq('', funcs.maparg('not a mapping'))
+    eq('', fn.maparg('not a mapping'))
   end)
 
-  it('returns an empty dictionary when no map is present and dict is requested', function()
-    eq({}, funcs.maparg('not a mapping', 'n', false, true))
+  it('returns an empty dict when no map is present and dict is requested', function()
+    eq({}, fn.maparg('not a mapping', 'n', false, true))
   end)
 
   it('returns the same value for noremap and <script>', function()
-    nvim('command', 'inoremap <script> hello world')
-    nvim('command', 'inoremap this that')
+    command('inoremap <script> hello world')
+    command('inoremap this that')
     eq(
-      funcs.maparg('hello', 'i', false, true)['noremap'],
-      funcs.maparg('this', 'i', false, true)['noremap']
-      )
+      fn.maparg('hello', 'i', false, true)['noremap'],
+      fn.maparg('this', 'i', false, true)['noremap']
+    )
   end)
 
   it('returns a boolean for buffer', function()
     -- Open enough windows to know we aren't on buffer number 1
-    nvim('command', 'new')
-    nvim('command', 'new')
-    nvim('command', 'new')
-    nvim('command', 'cnoremap <buffer> this that')
-    eq(1, funcs.maparg('this', 'c', false, true)['buffer'])
+    command('new')
+    command('new')
+    command('new')
+    command('cnoremap <buffer> this that')
+    eq(1, fn.maparg('this', 'c', false, true)['buffer'])
 
     -- Global will return 0 always
-    nvim('command', 'nnoremap other another')
-    eq(0, funcs.maparg('other', 'n', false, true)['buffer'])
+    command('nnoremap other another')
+    eq(0, fn.maparg('other', 'n', false, true)['buffer'])
   end)
 
   it('returns script numbers', function()
@@ -85,8 +88,8 @@ describe('maparg()', function()
 
       nnoremap fizz :call <SID>maparg_test_function()<CR>
     ]])
-    eq(1, funcs.maparg('fizz', 'n', false, true)['sid'])
-    eq('testing', nvim('call_function', '<SNR>1_maparg_test_function', {}))
+    eq(1, fn.maparg('fizz', 'n', false, true)['sid'])
+    eq('testing', api.nvim_call_function('<SNR>1_maparg_test_function', {}))
   end)
 
   it('works with <F12> and others', function()
@@ -101,7 +104,7 @@ describe('maparg()', function()
     ]])
     eq(1, eval('g:maparg_test_var'))
 
-    eq(':let g:maparg_test_var = 1<CR>', funcs.maparg('<F12>', 'n', false, true)['rhs'])
+    eq(':let g:maparg_test_var = 1<CR>', fn.maparg('<F12>', 'n', false, true)['rhs'])
   end)
 
   it('works with <expr>', function()
@@ -124,7 +127,7 @@ describe('maparg()', function()
     ]])
     eq(1, eval('g:counter'))
 
-    local map_dict = funcs.maparg('<C-L>', 'i', false, true)
+    local map_dict = fn.maparg('<C-L>', 'i', false, true)
     eq(1, map_dict['expr'])
     eq('i', map_dict['mode'])
   end)
@@ -132,7 +135,7 @@ describe('maparg()', function()
   it('works with combining characters', function()
     -- Using addacutes to make combining character better visible
     local function ac(s)
-      local acute = '\204\129'  -- U+0301 COMBINING ACUTE ACCENT
+      local acute = '\204\129' -- U+0301 COMBINING ACUTE ACCENT
       local ret = s:gsub('`', acute)
       return ret
     end
@@ -141,10 +144,10 @@ describe('maparg()', function()
       nnoremap c` d
       nnoremap e` f`
     ]]))
-    eq(ac('b`'), funcs.maparg(ac('a')))
-    eq(ac(''),   funcs.maparg(ac('c')))
-    eq(ac('d'),  funcs.maparg(ac('c`')))
-    eq(ac('f`'), funcs.maparg(ac('e`')))
+    eq(ac('b`'), fn.maparg(ac('a')))
+    eq(ac(''), fn.maparg(ac('c')))
+    eq(ac('d'), fn.maparg(ac('c`')))
+    eq(ac('f`'), fn.maparg(ac('e`')))
 
     local function acmap(lhs, rhs)
       return {
@@ -155,44 +158,57 @@ describe('maparg()', function()
         buffer = 0,
         expr = 0,
         mode = 'n',
+        mode_bits = 0x01,
+        abbr = 0,
         noremap = 1,
         nowait = 0,
-        script=0,
+        script = 0,
         sid = 0,
+        scriptversion = 1,
         silent = 0,
         lnum = 0,
       }
     end
 
-    eq({}, funcs.maparg(ac('c'),  'n', 0, 1))
-    eq(acmap('a',  'b`'), funcs.maparg(ac('a'),  'n', 0, 1))
-    eq(acmap('c`', 'd'),  funcs.maparg(ac('c`'), 'n', 0, 1))
-    eq(acmap('e`', 'f`'), funcs.maparg(ac('e`'), 'n', 0, 1))
+    eq({}, fn.maparg(ac('c'), 'n', 0, 1))
+    eq(acmap('a', 'b`'), fn.maparg(ac('a'), 'n', 0, 1))
+    eq(acmap('c`', 'd'), fn.maparg(ac('c`'), 'n', 0, 1))
+    eq(acmap('e`', 'f`'), fn.maparg(ac('e`'), 'n', 0, 1))
   end)
 end)
 
 describe('mapset()', function()
   before_each(clear)
 
+  it('can restore mapping with backslash in lhs', function()
+    api.nvim_set_keymap('n', '\\ab', 'a', {})
+    eq('\nn  \\ab           a', exec_capture('nmap \\ab'))
+    local mapargs = fn.maparg('\\ab', 'n', false, true)
+    api.nvim_set_keymap('n', '\\ab', 'b', {})
+    eq('\nn  \\ab           b', exec_capture('nmap \\ab'))
+    fn.mapset('n', false, mapargs)
+    eq('\nn  \\ab           a', exec_capture('nmap \\ab'))
+  end)
+
   it('can restore mapping description from the dict returned by maparg()', function()
-    meths.set_keymap('n', 'lhs', 'rhs', {desc = 'map description'})
-    eq('\nn  lhs           rhs\n                 map description', exec_capture("nmap lhs"))
-    local mapargs = funcs.maparg('lhs', 'n', false, true)
-    meths.set_keymap('n', 'lhs', 'rhs', {desc = 'MAP DESCRIPTION'})
-    eq('\nn  lhs           rhs\n                 MAP DESCRIPTION', exec_capture("nmap lhs"))
-    funcs.mapset('n', false, mapargs)
-    eq('\nn  lhs           rhs\n                 map description', exec_capture("nmap lhs"))
+    api.nvim_set_keymap('n', 'lhs', 'rhs', { desc = 'map description' })
+    eq('\nn  lhs           rhs\n                 map description', exec_capture('nmap lhs'))
+    local mapargs = fn.maparg('lhs', 'n', false, true)
+    api.nvim_set_keymap('n', 'lhs', 'rhs', { desc = 'MAP DESCRIPTION' })
+    eq('\nn  lhs           rhs\n                 MAP DESCRIPTION', exec_capture('nmap lhs'))
+    fn.mapset('n', false, mapargs)
+    eq('\nn  lhs           rhs\n                 map description', exec_capture('nmap lhs'))
   end)
 
   it('can restore "replace_keycodes" from the dict returned by maparg()', function()
-    meths.set_keymap('i', 'foo', [['<l' .. 't>']], {expr = true, replace_keycodes = true})
+    api.nvim_set_keymap('i', 'foo', [['<l' .. 't>']], { expr = true, replace_keycodes = true })
     feed('Afoo')
     expect('<')
-    local mapargs = funcs.maparg('foo', 'i', false, true)
-    meths.set_keymap('i', 'foo', [['<l' .. 't>']], {expr = true})
+    local mapargs = fn.maparg('foo', 'i', false, true)
+    api.nvim_set_keymap('i', 'foo', [['<l' .. 't>']], { expr = true })
     feed('foo')
     expect('<<lt>')
-    funcs.mapset('i', false, mapargs)
+    fn.mapset('i', false, mapargs)
     feed('foo')
     expect('<<lt><')
   end)
@@ -202,29 +218,36 @@ describe('mapset()', function()
     eq('\ni  foo         * bar', exec_capture('iabbr foo'))
     feed('ifoo ')
     expect('bar ')
-    local mapargs = funcs.maparg('foo', 'i', true, true)
+    local mapargs = fn.maparg('foo', 'i', true, true)
     command('inoreabbr foo BAR')
     eq('\ni  foo         * BAR', exec_capture('iabbr foo'))
     feed('foo ')
     expect('bar BAR ')
-    funcs.mapset('i', true, mapargs)
+    fn.mapset('i', true, mapargs)
     eq('\ni  foo         * bar', exec_capture('iabbr foo'))
     feed('foo<Esc>')
     expect('bar BAR bar')
   end)
 
   it('can restore Lua callback from the dict returned by maparg()', function()
-    eq(0, exec_lua([[
+    eq(
+      0,
+      exec_lua([[
       GlobalCount = 0
-      vim.api.nvim_set_keymap('n', 'asdf', '', {callback = function() GlobalCount = GlobalCount + 1 end })
+      vim.api.nvim_set_keymap('n', 'asdf', '', {
+        callback = function() GlobalCount = GlobalCount + 1 end,
+      })
       return GlobalCount
-    ]]))
+    ]])
+    )
     feed('asdf')
     eq(1, exec_lua([[return GlobalCount]]))
 
     exec_lua([[
       _G.saved_asdf_map = vim.fn.maparg('asdf', 'n', false, true)
-      vim.api.nvim_set_keymap('n', 'asdf', '', {callback = function() GlobalCount = GlobalCount + 10 end })
+      vim.api.nvim_set_keymap('n', 'asdf', '', {
+        callback = function() GlobalCount = GlobalCount + 10 end,
+      })
     ]])
     feed('asdf')
     eq(11, exec_lua([[return GlobalCount]]))
@@ -235,7 +258,10 @@ describe('mapset()', function()
 
     exec([[
       let g:saved_asdf_map = maparg('asdf', 'n', v:false, v:true)
-      lua vim.api.nvim_set_keymap('n', 'asdf', '', {callback = function() GlobalCount = GlobalCount + 10 end })
+      lua <<
+      vim.api.nvim_set_keymap('n', 'asdf', '', {
+        callback = function() GlobalCount = GlobalCount + 10 end,
+      })
     ]])
     feed('asdf')
     eq(22, exec_lua([[return GlobalCount]]))
@@ -246,9 +272,13 @@ describe('mapset()', function()
   end)
 
   it('does not leak memory if lhs is missing', function()
-    eq('Error executing lua: Vim:E460: entries missing in mapset() dict argument',
-       pcall_err(exec_lua, [[vim.fn.mapset('n', false, {rhs = 'foo'})]]))
-    eq('Error executing lua: Vim:E460: entries missing in mapset() dict argument',
-       pcall_err(exec_lua, [[vim.fn.mapset('n', false, {callback = function() end})]]))
+    eq(
+      'Vim:E460: Entries missing in mapset() dict argument',
+      pcall_err(exec_lua, [[vim.fn.mapset('n', false, {rhs = 'foo'})]])
+    )
+    eq(
+      'Vim:E460: Entries missing in mapset() dict argument',
+      pcall_err(exec_lua, [[vim.fn.mapset('n', false, {callback = function() end})]])
+    )
   end)
 end)

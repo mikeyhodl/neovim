@@ -1,19 +1,19 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local clear = helpers.clear
-local command = helpers.command
-local eq = helpers.eq
-local exec_lua = helpers.exec_lua
-local expect = helpers.expect
-local funcs = helpers.funcs
-local insert = helpers.insert
-local meths = helpers.meths
-local new_argv = helpers.new_argv
-local neq = helpers.neq
-local set_session = helpers.set_session
-local spawn = helpers.spawn
-local tmpname = helpers.tmpname
-local write_file = helpers.write_file
+local clear = n.clear
+local command = n.command
+local eq = t.eq
+local exec_capture = n.exec_capture
+local exec_lua = n.exec_lua
+local expect = n.expect
+local fn = n.fn
+local insert = n.insert
+local nvim_prog = n.nvim_prog
+local neq = t.neq
+local set_session = n.set_session
+local tmpname = t.tmpname
+local write_file = t.write_file
 
 describe('Remote', function()
   local fname, other_fname
@@ -30,100 +30,119 @@ describe('Remote', function()
   describe('connect to server and', function()
     local server
     before_each(function()
-      server = spawn(new_argv(), true)
-      set_session(server)
+      server = n.clear()
     end)
 
     after_each(function()
       server:close()
     end)
 
+    -- Run a `nvim --remote*` command and return { stdout, stderr } of the process
     local function run_remote(...)
       set_session(server)
-      local addr = funcs.serverlist()[1]
-      local client_argv = new_argv({args={'--server', addr, ...}})
+      local addr = fn.serverlist()[1]
 
       -- Create an nvim instance just to run the remote-invoking nvim. We want
       -- to wait for the remote instance to exit and calling jobwait blocks
       -- the event loop. If the server event loop is blocked, it can't process
       -- our incoming --remote calls.
-      local client_starter = spawn(new_argv(), false, nil, true)
+      local client_starter = n.new_session(true)
       set_session(client_starter)
       -- Call jobstart() and jobwait() in the same RPC request to reduce flakiness.
-      eq({ 0 }, exec_lua([[return vim.fn.jobwait({ vim.fn.jobstart(...) })]], client_argv))
+      eq(
+        { 0 },
+        exec_lua(
+          [[return vim.fn.jobwait({ vim.fn.jobstart({...}, {
+        stdout_buffered = true,
+        stderr_buffered = true,
+        on_stdout = function(_, data, _)
+          _G.Remote_stdout = table.concat(data, '\n')
+        end,
+        on_stderr = function(_, data, _)
+          _G.Remote_stderr = table.concat(data, '\n')
+        end,
+      }) })]],
+          nvim_prog,
+          '--clean',
+          '--headless',
+          '--server',
+          addr,
+          ...
+        )
+      )
+      local res = exec_lua([[return { _G.Remote_stdout, _G.Remote_stderr }]])
       client_starter:close()
       set_session(server)
+      return res
     end
 
     it('edit a single file', function()
-      run_remote('--remote', fname)
+      eq({ '', '' }, run_remote('--remote', fname))
       expect(contents)
-      eq(2, #funcs.getbufinfo())
+      eq(1, #fn.getbufinfo())
     end)
 
     it('tab edit a single file with a non-changed buffer', function()
-      run_remote('--remote-tab', fname)
+      eq({ '', '' }, run_remote('--remote-tab', fname))
       expect(contents)
-      eq(1, #funcs.gettabinfo())
+      eq(1, #fn.gettabinfo())
     end)
 
     it('tab edit a single file with a changed buffer', function()
       insert('hello')
-      run_remote('--remote-tab', fname)
+      eq({ '', '' }, run_remote('--remote-tab', fname))
       expect(contents)
-      eq(2, #funcs.gettabinfo())
+      eq(2, #fn.gettabinfo())
     end)
 
     it('edit multiple files', function()
-      run_remote('--remote', fname, other_fname)
+      eq({ '', '' }, run_remote('--remote', fname, other_fname))
       expect(contents)
       command('next')
       expect(other_contents)
-      eq(3, #funcs.getbufinfo())
+      eq(2, #fn.getbufinfo())
     end)
 
     it('send keys', function()
-      run_remote('--remote-send', ':edit '..fname..'<CR><C-W>v')
+      eq({ '', '' }, run_remote('--remote-send', ':edit ' .. fname .. '<CR><C-W>v'))
       expect(contents)
-      eq(2, #funcs.getwininfo())
+      eq(2, #fn.getwininfo())
       -- Only a single buffer as we're using edit and not drop like --remote does
-      eq(1, #funcs.getbufinfo())
+      eq(1, #fn.getbufinfo())
     end)
 
     it('evaluate expressions', function()
-      run_remote('--remote-expr', 'setline(1, "Yo")')
+      eq({ '0', '' }, run_remote('--remote-expr', 'setline(1, "Yo")'))
+      eq({ 'Yo', '' }, run_remote('--remote-expr', 'getline(1)'))
       expect('Yo')
+      eq({ ('k'):rep(1234), '' }, run_remote('--remote-expr', 'repeat("k", 1234)'))
+      eq({ '1.25', '' }, run_remote('--remote-expr', '1.25'))
+      eq({ 'no', '' }, run_remote('--remote-expr', '0z6E6F'))
+      eq({ '\t', '' }, run_remote('--remote-expr', '"\t"'))
     end)
   end)
 
   it('creates server if not found', function()
     clear('--remote', fname)
     expect(contents)
-    eq(1, #funcs.getbufinfo())
+    eq(1, #fn.getbufinfo())
     -- Since we didn't pass silent, we should get a complaint
-    neq(nil, string.find(meths.exec('messages', true), 'E247'))
+    neq(nil, string.find(exec_capture('messages'), 'E247:'))
   end)
 
   it('creates server if not found with tabs', function()
     clear('--remote-tab-silent', fname, other_fname)
     expect(contents)
-    eq(2, #funcs.gettabinfo())
-    eq(2, #funcs.getbufinfo())
+    eq(2, #fn.gettabinfo())
+    eq(2, #fn.getbufinfo())
     -- We passed silent, so no message should be issued about the server not being found
-    eq(nil, string.find(meths.exec('messages', true), 'E247'))
+    eq(nil, string.find(exec_capture('messages'), 'E247:'))
   end)
 
-  pending('exits with error on', function()
+  describe('exits with error on', function()
     local function run_and_check_exit_code(...)
-      local bogus_argv = new_argv(...)
-
-      -- Create an nvim instance just to run the remote-invoking nvim. We want
-      -- to wait for the remote instance to exit and calling jobwait blocks
-      -- the event loop. If the server event loop is blocked, it can't process
-      -- our incoming --remote calls.
-      clear()
-      -- Call jobstart() and jobwait() in the same RPC request to reduce flakiness.
-      eq({ 2 }, exec_lua([[return vim.fn.jobwait({ vim.fn.jobstart(...) })]], bogus_argv))
+      local p = n.spawn_wait { args = { ... } }
+      eq(2, p.status)
     end
     it('bogus subcommand', function()
       run_and_check_exit_code('--remote-bogus')

@@ -1,10 +1,8 @@
-#ifndef NVIM_TEXTFORMAT_H
-#define NVIM_TEXTFORMAT_H
+#pragma once
 
-#include "nvim/normal.h"  // for oparg_T
-#include "nvim/pos.h"  // for linenr_T
+#include "nvim/normal_defs.h"  // IWYU pragma: keep
+#include "nvim/pos_defs.h"  // IWYU pragma: keep
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "textformat.h.generated.h"
 #endif
-#endif  // NVIM_TEXTFORMAT_H

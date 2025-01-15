@@ -103,7 +103,7 @@ gn			Search forward for the last used search pattern, like
 			E.g., "dgn" deletes the text of the next match.
 			If Visual mode is active, extends the selection
 			until the end of the next match.
-			'wrapscan' applies
+			'wrapscan' applies.
 			Note: Unlike `n` the search direction does not depend
 			on the previous search command.
 
@@ -169,6 +169,7 @@ If you want to highlight exactly the same area as the last time, you can use
 CTRL-C			In Visual mode: Stop Visual mode.  When insert mode is
 			pending (the mode message shows
 			"-- (insert) VISUAL --"), it is also stopped.
+			On MS-Windows, you may need to press CTRL-Break.
 
 ==============================================================================
 3. Changing the Visual area				*visual-change*
@@ -365,6 +366,20 @@ one of the last commands to extend the highlighted text, the repeating will
 be applied up to the rightmost column of the longest line.  Any count passed
 to the `.` command is not used.
 
+Visual mode |default-mappings| "@" and "Q" repeat a register for all selected
+lines if the selection is linewise.  See |v_@-default| and |v_Q-default| for
+details.  For example, given the text:
+
+	123(hello)321
+	456(world)654
+	456(NOT THIS)654
+
+With register "x" containing the commands `yi(VP`, visually selecting the
+first two lines and typing `@x` produces:
+
+	hello
+	world
+	456(NOT THIS)654
 
 ==============================================================================
 7. Examples						*visual-examples*
@@ -398,7 +413,7 @@ selected text: >
 (In the <> notation |<>|, when typing it you should type it literally; you
 need to remove the 'B' flag from 'cpoptions')
 
-Note that special characters (like '.' and '*') will cause problems.
+Note that special characters (like '.' and "*") will cause problems.
 
 Visual-block Examples					*blockwise-examples*
 With the following text, I will indicate the commands to produce the block and
@@ -501,11 +516,11 @@ mode Vim automatically switches to Visual mode, so that the same behavior as
 in Visual mode is effective.  If you don't want this use |:xmap| or |:smap|.
 
 One particular edge case: >
-  	:vnoremap <C-K> <Esc>
+	:vnoremap <C-K> <Esc>
 This ends Visual mode when in Visual mode, but in Select mode it does not
 work, because Select mode is restored after executing the mapped keys.  You
 need to use: >
-  	:snoremap <C-K> <Esc>
+	:snoremap <C-K> <Esc>
 <
 Users will expect printable characters to replace the selected area.
 Therefore avoid mapping printable characters in Select mode.  Or use

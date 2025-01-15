@@ -1,22 +1,29 @@
-local helpers = require('test.functional.helpers')(after_each)
-local global_helpers = require('test.helpers')
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
 
-local clear = helpers.clear
-local curbuf_contents = helpers.curbuf_contents
-local command = helpers.command
-local eq, neq, matches = helpers.eq, helpers.neq, helpers.matches
-local getcompletion = helpers.funcs.getcompletion
+local clear = n.clear
+local curbuf_contents = n.curbuf_contents
+local command = n.command
+local eq, matches = t.eq, t.matches
+local getcompletion = n.fn.getcompletion
+local insert = n.insert
+local exec_lua = n.exec_lua
+local source = n.source
+local assert_alive = n.assert_alive
+local fn = n.fn
+local api = n.api
 
 describe(':checkhealth', function()
-  it("detects invalid $VIMRUNTIME", function()
+  it('detects invalid $VIMRUNTIME', function()
     clear({
-      env={ VIMRUNTIME='bogus', },
+      env = { VIMRUNTIME = 'bogus' },
     })
     local status, err = pcall(command, 'checkhealth')
     eq(false, status)
     eq('Invalid $VIMRUNTIME: bogus', string.match(err, 'Invalid.*'))
   end)
+
   it("detects invalid 'runtimepath'", function()
     clear()
     command('set runtimepath=bogus')
@@ -24,229 +31,185 @@ describe(':checkhealth', function()
     eq(false, status)
     eq("Invalid 'runtimepath'", string.match(err, 'Invalid.*'))
   end)
-  it("detects invalid $VIM", function()
+
+  it('detects invalid $VIM', function()
     clear()
     -- Do this after startup, otherwise it just breaks $VIMRUNTIME.
     command("let $VIM='zub'")
-    command("checkhealth nvim")
-    matches('ERROR: $VIM .* zub', curbuf_contents())
+    command('checkhealth vim.health')
+    matches('ERROR $VIM .* zub', curbuf_contents())
   end)
-  it('completions can be listed via getcompletion()', function()
-    clear()
-    eq('nvim', getcompletion('nvim', 'checkhealth')[1])
-    eq('provider', getcompletion('prov', 'checkhealth')[1])
+
+  it('getcompletion()', function()
+    clear { args = { '-u', 'NORC', '+set runtimepath+=test/functional/fixtures' } }
+
+    eq('vim.deprecated', getcompletion('vim', 'checkhealth')[1])
+    eq('vim.provider', getcompletion('vim.prov', 'checkhealth')[1])
     eq('vim.lsp', getcompletion('vim.ls', 'checkhealth')[1])
-    neq('vim', getcompletion('^vim', 'checkhealth')[1])  -- should not complete vim.health
+
+    -- "test_plug/health/init.lua" should complete as "test_plug", not "test_plug.health". #30342
+    eq({
+      'test_plug',
+      'test_plug.full_render',
+      'test_plug.submodule',
+      'test_plug.submodule_empty',
+      'test_plug.success1',
+      'test_plug.success2',
+    }, getcompletion('test_plug', 'checkhealth'))
+  end)
+
+  it('completion checks for vim.health._complete() return type #28456', function()
+    clear()
+    exec_lua([[vim.health._complete = function() return 1 end]])
+    eq({}, getcompletion('', 'checkhealth'))
+    exec_lua([[vim.health._complete = function() return { 1 } end]])
+    eq({}, getcompletion('', 'checkhealth'))
+    assert_alive()
+  end)
+
+  it('vim.g.health', function()
+    clear()
+    command("let g:health = {'style':'float'}")
+    command('checkhealth lsp')
+    eq(
+      'editor',
+      exec_lua([[
+      return vim.api.nvim_win_get_config(0).relative
+    ]])
+    )
   end)
 end)
 
-describe('health.vim', function()
+describe('vim.health', function()
   before_each(function()
-    clear{args={'-u', 'NORC'}}
-    -- Provides functions:
-    --    health#broken#check()
-    --    health#success1#check()
-    --    health#success2#check()
-    command("set runtimepath+=test/functional/fixtures")
+    clear { args = { '-u', 'NORC', '+set runtimepath+=test/functional/fixtures' } }
   end)
 
-  describe(":checkhealth", function()
-    it("functions health#report_*() render correctly", function()
-      command("checkhealth full_render")
-      helpers.expect([[
+  describe(':checkhealth', function()
+    it('functions report_*() render correctly', function()
+      command('checkhealth full_render')
+      n.expect([[
 
-      full_render: health#full_render#check
-      ========================================================================
-      ## report 1
-        - OK: life is fine
-        - WARNING: no what installed
-          - ADVICE:
-            - pip what
-            - make what
+      ==============================================================================
+      test_plug.full_render:         require("test_plug.full_render.health").check()
 
-      ## report 2
-        - INFO: stuff is stable
-        - ERROR: why no hardcopy
-          - ADVICE:
-            - :help |:hardcopy|
-            - :help |:TOhtml|
+      report 1 ~
+      - OK life is fine
+      - WARNING no what installed
+        - ADVICE:
+          - pip what
+          - make what
+
+      report 2 ~
+      - stuff is stable
+      - ERROR why no hardcopy
+        - ADVICE:
+          - :help |:hardcopy|
+          - :help |:TOhtml|
       ]])
     end)
 
-    it("concatenates multiple reports", function()
-      command("checkhealth success1 success2 test_plug")
-      helpers.expect([[
+    it('concatenates multiple reports', function()
+      command('checkhealth success1 success2 test_plug')
+      n.expect([[
 
-        success1: health#success1#check
-        ========================================================================
-        ## report 1
-          - OK: everything is fine
+        ==============================================================================
+        test_plug:                                 require("test_plug.health").check()
 
-        ## report 2
-          - OK: nothing to see here
+        report 1 ~
+        - OK everything is fine
 
-        success2: health#success2#check
-        ========================================================================
-        ## another 1
-          - OK: ok
+        report 2 ~
+        - OK nothing to see here
 
-        test_plug: require("test_plug.health").check()
-        ========================================================================
-        ## report 1
-          - OK: everything is fine
+        ==============================================================================
+        test_plug.success1:               require("test_plug.success1.health").check()
 
-        ## report 2
-          - OK: nothing to see here
+        report 1 ~
+        - OK everything is fine
+
+        report 2 ~
+        - OK nothing to see here
+
+        ==============================================================================
+        test_plug.success2:               require("test_plug.success2.health").check()
+
+        another 1 ~
+        - OK ok
         ]])
     end)
 
-    it("lua plugins, skips vimscript healthchecks with the same name", function()
-      command("checkhealth test_plug")
-      -- Existing file in test/functional/fixtures/lua/test_plug/autoload/health/test_plug.vim
-      -- and the Lua healthcheck is used instead.
-      helpers.expect([[
+    it('lua plugins submodules', function()
+      command('checkhealth test_plug.submodule')
+      n.expect([[
 
-        test_plug: require("test_plug.health").check()
-        ========================================================================
-        ## report 1
-          - OK: everything is fine
+        ==============================================================================
+        test_plug.submodule:             require("test_plug.submodule.health").check()
 
-        ## report 2
-          - OK: nothing to see here
+        report 1 ~
+        - OK everything is fine
+
+        report 2 ~
+        - OK nothing to see here
         ]])
     end)
 
-    it("lua plugins submodules", function()
-      command("checkhealth test_plug.submodule")
-      helpers.expect([[
+    it('... including empty reports', function()
+      command('checkhealth test_plug.submodule_empty')
+      n.expect([[
 
-        test_plug.submodule: require("test_plug.submodule.health").check()
-        ========================================================================
-        ## report 1
-          - OK: everything is fine
-
-        ## report 2
-          - OK: nothing to see here
-        ]])
-    end)
-
-    it("lua plugins submodules with expression '*'", function()
-      command("checkhealth test_plug*")
-      local buf_lines = helpers.curbuf('get_lines', 0, -1, true)
-      -- avoid dealing with path separators
-      local received = table.concat(buf_lines, '\n', 1, #buf_lines - 5)
-      local expected = helpers.dedent([[
-
-        test_plug: require("test_plug.health").check()
-        ========================================================================
-        ## report 1
-          - OK: everything is fine
-
-        ## report 2
-          - OK: nothing to see here
-
-        test_plug.submodule: require("test_plug.submodule.health").check()
-        ========================================================================
-        ## report 1
-          - OK: everything is fine
-
-        ## report 2
-          - OK: nothing to see here
-
-        test_plug.submodule_empty: require("test_plug.submodule_empty.health").check()
-        ========================================================================
-          - ERROR: The healthcheck report for "test_plug.submodule_empty" plugin is empty.
-
-        test_plug.submodule_failed: require("test_plug.submodule_failed.health").check()
-        ========================================================================
-          - ERROR: Failed to run healthcheck for "test_plug.submodule_failed" plugin. Exception:
-            function health#check, line 20]])
-      eq(expected, received)
-    end)
-
-    it("gracefully handles broken healthcheck", function()
-      command("checkhealth broken")
-      helpers.expect([[
-
-        broken: health#broken#check
-        ========================================================================
-          - ERROR: Failed to run healthcheck for "broken" plugin. Exception:
-            function health#check[20]..health#broken#check, line 1
-            caused an error
-        ]])
-    end)
-
-    it("... including empty reports", function()
-      command("checkhealth test_plug.submodule_empty")
-      helpers.expect([[
-
+      ==============================================================================
       test_plug.submodule_empty: require("test_plug.submodule_empty.health").check()
-      ========================================================================
-        - ERROR: The healthcheck report for "test_plug.submodule_empty" plugin is empty.
+
+      - ERROR The healthcheck report for "test_plug.submodule_empty" plugin is empty.
       ]])
     end)
 
-    it("gracefully handles broken lua healthcheck", function()
-      command("checkhealth test_plug.submodule_failed")
-      local buf_lines = helpers.curbuf('get_lines', 0, -1, true)
-      local received = table.concat(buf_lines, '\n', 1, #buf_lines - 5)
-      -- avoid dealing with path separators
-      local lua_err = "attempt to perform arithmetic on a nil value"
-      local last_line = buf_lines[#buf_lines - 4]
-      assert(string.find(last_line, lua_err) ~= nil, "Lua error not present")
-
-      local expected = global_helpers.dedent([[
-
-        test_plug.submodule_failed: require("test_plug.submodule_failed.health").check()
-        ========================================================================
-          - ERROR: Failed to run healthcheck for "test_plug.submodule_failed" plugin. Exception:
-            function health#check, line 20]])
-      eq(expected, received)
-    end)
-
-    it("highlights OK, ERROR", function()
-      local screen = Screen.new(72, 10)
-      screen:attach()
+    it('highlights OK, ERROR', function()
+      local screen = Screen.new(50, 12)
       screen:set_default_attr_ids({
-        Ok = { foreground = Screen.colors.Grey3, background = 6291200 },
-        Error = { foreground = Screen.colors.Grey100, background = Screen.colors.Red },
-        Heading = { bold=true, foreground=Screen.colors.Magenta },
-        Heading2 = { foreground = Screen.colors.SlateBlue },
-        Bar = { foreground = 0x6a0dad },
-        Bullet = { bold=true, foreground=Screen.colors.Brown },
+        h1 = { reverse = true },
+        h2 = { foreground = tonumber('0x6a0dad') },
+        Ok = { foreground = Screen.colors.LightGreen },
+        Error = { foreground = Screen.colors.Red },
+        Bar = { foreground = Screen.colors.LightGrey, background = Screen.colors.DarkGrey },
       })
-      command("checkhealth foo success1")
-      command("1tabclose")
-      command("set laststatus=0")
-      screen:expect{grid=[[
-        ^                                                                        |
-        {Heading:foo: }                                                                   |
-        {Bar:========================================================================}|
-        {Bullet:  -} {Error:ERROR}: No healthcheck found for "foo" plugin.                       |
-                                                                                |
-        {Heading:success1: health#success1#check}                                         |
-        {Bar:========================================================================}|
-        {Heading2:## }{Heading:report 1}                                                             |
-        {Bullet:  -} {Ok:OK}: everything is fine                                              |
-                                                                                |
-      ]]}
+      command('checkhealth foo success1')
+      command('set nofoldenable nowrap laststatus=0')
+      screen:expect {
+        grid = [[
+        ^                                                  |
+        {Bar:                                                  }|
+        {h1:foo:                                              }|
+                                                          |
+        - {Error:ERROR} No healthcheck found for "foo" plugin.    |
+                                                          |
+        {Bar:                                                  }|
+        {h1:test_plug.success1:               require("test_pl}|
+                                                          |
+        {h2:report 1}                                          |
+        - {Ok:OK} everything is fine                           |
+                                                          |
+      ]],
+      }
     end)
 
-    it("gracefully handles invalid healthcheck", function()
-      command("checkhealth non_existent_healthcheck")
+    it('gracefully handles invalid healthcheck', function()
+      command('checkhealth non_existent_healthcheck')
       -- luacheck: ignore 613
-      helpers.expect([[
+      n.expect([[
 
-        non_existent_healthcheck: 
-        ========================================================================
-          - ERROR: No healthcheck found for "non_existent_healthcheck" plugin.
+        ==============================================================================
+        non_existent_healthcheck:                                                     
+
+        - ERROR No healthcheck found for "non_existent_healthcheck" plugin.
         ]])
     end)
 
-    it("does not use vim.health as a healtcheck", function()
+    it('does not use vim.health as a healtcheck', function()
       -- vim.health is not a healthcheck
-      command("checkhealth vim")
-      helpers.expect([[
+      command('checkhealth vim')
+      n.expect([[
       ERROR: No healthchecks found.]])
     end)
   end)
@@ -260,5 +223,200 @@ describe(':checkhealth provider', function()
     command('let g:loaded_python3_provider = 0')
     command('checkhealth provider')
     eq(nil, string.match(curbuf_contents(), 'WRONG!!!'))
+  end)
+end)
+
+describe(':checkhealth window', function()
+  before_each(function()
+    clear { args = { '-u', 'NORC', '+set runtimepath+=test/functional/fixtures' } }
+    command('set nofoldenable nowrap laststatus=0')
+  end)
+
+  it('opens directly if no buffer created', function()
+    local screen = Screen.new(50, 12, { ext_multigrid = true })
+    screen:set_default_attr_ids {
+      h1 = { reverse = true },
+      h2 = { foreground = tonumber('0x6a0dad') },
+      [1] = { foreground = Screen.colors.Blue, bold = true },
+      [14] = { foreground = Screen.colors.LightGrey, background = Screen.colors.DarkGray },
+      [32] = { foreground = Screen.colors.PaleGreen2 },
+    }
+    command('checkhealth success1')
+    screen:expect {
+      grid = [[
+    ## grid 1
+      [2:--------------------------------------------------]|*11
+      [3:--------------------------------------------------]|
+    ## grid 2
+      ^                                                  |
+      {14:                                                  }|
+      {14:                            }                      |
+      {h1:test_plug.success1:                               }|
+      {h1:require("test_plug.success1.health").check()}      |
+                                                        |
+      {h2:report 1}                                          |
+      - {32:OK} everything is fine                           |
+                                                        |
+      {h2:report 2}                                          |
+      - {32:OK} nothing to see here                          |
+    ## grid 3
+                                                        |
+    ]],
+    }
+  end)
+
+  local function test_health_vsplit(left, emptybuf, mods)
+    local screen = Screen.new(50, 20, { ext_multigrid = true })
+    screen:set_default_attr_ids {
+      h1 = { reverse = true },
+      h2 = { foreground = tonumber('0x6a0dad') },
+      [1] = { foreground = Screen.colors.Blue, bold = true },
+      [14] = { foreground = Screen.colors.LightGrey, background = Screen.colors.DarkGray },
+      [32] = { foreground = Screen.colors.PaleGreen2 },
+    }
+    if not emptybuf then
+      insert('hello')
+    end
+    command(mods .. ' checkhealth success1')
+    screen:expect(
+      ([[
+    ## grid 1
+      %s
+      [3:--------------------------------------------------]|
+    ## grid 2
+      %s                   |
+      {1:~                       }|*18
+    ## grid 3
+                                                        |
+    ## grid 4
+      ^                         |
+      {14:                         }|*3
+      {14:   }                      |
+      {h1:test_plug.               }|
+      {h1:success1:                }|
+      {h1:require("test_plug.      }|
+      {h1:success1.health").check()}|
+                               |
+      {h2:report 1}                 |
+      - {32:OK} everything is fine  |
+                               |
+      {h2:report 2}                 |
+      - {32:OK} nothing to see here |
+                               |
+      {1:~                        }|*3
+    ]]):format(
+        left and '[4:-------------------------]│[2:------------------------]|*19'
+          or '[2:------------------------]│[4:-------------------------]|*19',
+        emptybuf and '     ' or 'hello'
+      )
+    )
+  end
+
+  for _, mods in ipairs({ 'vertical', 'leftabove vertical', 'topleft vertical' }) do
+    it(('opens in left vsplit window with :%s and no buffer created'):format(mods), function()
+      test_health_vsplit(true, true, mods)
+    end)
+    it(('opens in left vsplit window with :%s and non-empty buffer'):format(mods), function()
+      test_health_vsplit(true, false, mods)
+    end)
+  end
+
+  for _, mods in ipairs({ 'rightbelow vertical', 'botright vertical' }) do
+    it(('opens in right vsplit window with :%s and no buffer created'):format(mods), function()
+      test_health_vsplit(false, true, mods)
+    end)
+    it(('opens in right vsplit window with :%s and non-empty buffer'):format(mods), function()
+      test_health_vsplit(false, false, mods)
+    end)
+  end
+
+  local function test_health_split(top, emptybuf, mods)
+    local screen = Screen.new(50, 25, { ext_multigrid = true })
+    screen._default_attr_ids = nil
+    if not emptybuf then
+      insert('hello')
+    end
+    command(mods .. ' checkhealth success1')
+    screen:expect(
+      ([[
+    ## grid 1
+%s
+      [3:--------------------------------------------------]|
+    ## grid 2
+      %s                                             |
+      ~                                                 |*10
+    ## grid 3
+                                                        |
+    ## grid 4
+      ^                                                  |
+                                                        |
+                                                        |
+      test_plug.success1:                               |
+      require("test_plug.success1.health").check()      |
+                                                        |
+      report 1                                          |
+      - OK everything is fine                           |
+                                                        |
+      report 2                                          |
+      - OK nothing to see here                          |
+                                                        |
+    ]]):format(
+        top
+            and [[
+      [4:--------------------------------------------------]|*12
+      health://                                         |
+      [2:--------------------------------------------------]|*11]]
+          or ([[
+      [2:--------------------------------------------------]|*11
+      [No Name] %s                                     |
+      [4:--------------------------------------------------]|*12]]):format(
+            emptybuf and '   ' or '[+]'
+          ),
+        emptybuf and '     ' or 'hello'
+      )
+    )
+  end
+
+  for _, mods in ipairs({ 'horizontal', 'leftabove', 'topleft' }) do
+    it(('opens in top split window with :%s and no buffer created'):format(mods), function()
+      test_health_split(true, true, mods)
+    end)
+    it(('opens in top split window with :%s and non-empty buffer'):format(mods), function()
+      test_health_split(true, false, mods)
+    end)
+  end
+
+  for _, mods in ipairs({ 'rightbelow', 'botright' }) do
+    it(('opens in bottom split window with :%s and no buffer created'):format(mods), function()
+      test_health_split(false, true, mods)
+    end)
+    it(('opens in bottom split window with :%s and non-empty buffer'):format(mods), function()
+      test_health_split(false, false, mods)
+    end)
+  end
+
+  it('opens in tab', function()
+    -- create an empty buffer called "my_buff"
+    api.nvim_create_buf(false, true)
+    command('file my_buff')
+    command('checkhealth success1')
+    -- define a function that collects all buffers in each tab
+    -- returns a dict like {tab1 = ["buf1", "buf2"], tab2 = ["buf3"]}
+    source([[
+        function CollectBuffersPerTab()
+                let buffs = {}
+                for i in range(tabpagenr('$'))
+                  let key = 'tab' . (i + 1)
+                  let value = []
+                  for j in tabpagebuflist(i + 1)
+                    call add(value, bufname(j))
+                  endfor
+                  let buffs[key] = value
+                endfor
+                return buffs
+        endfunction
+    ]])
+    local buffers_per_tab = fn.CollectBuffersPerTab()
+    eq(buffers_per_tab, { tab1 = { 'my_buff' }, tab2 = { 'health://' } })
   end)
 end)

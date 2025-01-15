@@ -1,10 +1,10 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <assert.h>
-#include <inttypes.h>
+#include <limits.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -12,39 +12,37 @@
 #include "nvim/api/private/converter.h"
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
-#include "nvim/api/vim.h"
-#include "nvim/ascii.h"
-#include "nvim/assert.h"
-#include "nvim/buffer.h"
-#include "nvim/charset.h"
-#include "nvim/eval.h"
+#include "nvim/api/private/validate.h"
+#include "nvim/ascii_defs.h"
+#include "nvim/buffer_defs.h"
 #include "nvim/eval/typval.h"
-#include "nvim/ex_cmds_defs.h"
+#include "nvim/eval/vars.h"
 #include "nvim/ex_eval.h"
-#include "nvim/extmark.h"
+#include "nvim/garray_defs.h"
+#include "nvim/globals.h"
 #include "nvim/highlight_group.h"
 #include "nvim/lua/executor.h"
-#include "nvim/map.h"
 #include "nvim/map_defs.h"
 #include "nvim/mark.h"
 #include "nvim/memline.h"
 #include "nvim/memory.h"
-#include "nvim/msgpack_rpc/helpers.h"
-#include "nvim/ui.h"
-#include "nvim/version.h"
-#include "nvim/vim.h"
-#include "nvim/window.h"
+#include "nvim/memory_defs.h"
+#include "nvim/message.h"
+#include "nvim/msgpack_rpc/unpacker.h"
+#include "nvim/pos_defs.h"
+#include "nvim/types_defs.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
-# include "api/private/funcs_metadata.generated.h"
-# include "api/private/helpers.c.generated.h"
-# include "api/private/ui_events_metadata.generated.h"
+# include "api/private/api_metadata.generated.h"
+# include "api/private/helpers.c.generated.h"  // IWYU pragma: keep
 #endif
 
-/// Start block that may cause VimL exceptions while evaluating another code
+/// Start block that may cause Vimscript exceptions while evaluating another code
 ///
-/// Used when caller is supposed to be operating when other VimL code is being
-/// processed and that “other VimL code” must not be affected.
+/// Used just in case caller is supposed to be operating when other Vimscript code
+/// is being processed and that “other Vimscript code” must not be affected.
+///
+/// @warning Avoid calling directly; use TRY_WRAP instead.
 ///
 /// @param[out]  tstate  Location where try state should be saved.
 void try_enter(TryState *const tstate)
@@ -56,74 +54,33 @@ void try_enter(TryState *const tstate)
     .current_exception = current_exception,
     .msg_list = (const msglist_T *const *)msg_list,
     .private_msg_list = NULL,
-    .trylevel = trylevel,
     .got_int = got_int,
     .did_throw = did_throw,
     .need_rethrow = need_rethrow,
     .did_emsg = did_emsg,
   };
+  // `msg_list` controls the collection of abort-causing non-exception errors,
+  // which would otherwise be ignored.  This pattern is from do_cmdline().
   msg_list = &tstate->private_msg_list;
   current_exception = NULL;
-  trylevel = 1;
   got_int = false;
   did_throw = false;
   need_rethrow = false;
   did_emsg = false;
-}
-
-/// End try block, set the error message if any and restore previous state
-///
-/// @warning Return is consistent with most functions (false on error), not with
-///          try_end (true on error).
-///
-/// @param[in]  tstate  Previous state to restore.
-/// @param[out]  err  Location where error should be saved.
-///
-/// @return false if error occurred, true otherwise.
-bool try_leave(const TryState *const tstate, Error *const err)
-  FUNC_ATTR_NONNULL_ALL FUNC_ATTR_WARN_UNUSED_RESULT
-{
-  const bool ret = !try_end(err);
-  assert(trylevel == 0);
-  assert(!need_rethrow);
-  assert(!got_int);
-  assert(!did_throw);
-  assert(!did_emsg);
-  assert(msg_list == &tstate->private_msg_list);
-  assert(*msg_list == NULL);
-  assert(current_exception == NULL);
-  msg_list = (msglist_T **)tstate->msg_list;
-  current_exception = tstate->current_exception;
-  trylevel = tstate->trylevel;
-  got_int = tstate->got_int;
-  did_throw = tstate->did_throw;
-  need_rethrow = tstate->need_rethrow;
-  did_emsg = tstate->did_emsg;
-  return ret;
-}
-
-/// Start block that may cause vimscript exceptions
-///
-/// Each try_start() call should be mirrored by try_end() call.
-///
-/// To be used as a replacement of `:try … catch … endtry` in C code, in cases
-/// when error flag could not already be set. If there may be pending error
-/// state at the time try_start() is executed which needs to be preserved,
-/// try_enter()/try_leave() pair should be used instead.
-void try_start(void)
-{
   trylevel++;
 }
 
-/// End try block, set the error message if any and return true if an error
-/// occurred.
+/// Ends a `try_enter` block; sets error message if any.
 ///
-/// @param err Pointer to the stack-allocated error object
-/// @return true if an error occurred
-bool try_end(Error *err)
+/// @warning Avoid calling directly; use TRY_WRAP instead.
+///
+/// @param[out] err Pointer to the stack-allocated error object
+void try_leave(const TryState *const tstate, Error *const err)
+  FUNC_ATTR_NONNULL_ALL
 {
   // Note: all globals manipulated here should be saved/restored in
   // try_enter/try_leave.
+  assert(trylevel > 0);
   trylevel--;
 
   // Set by emsg(), affects aborting().  See also enter_cleanup().
@@ -139,7 +96,7 @@ bool try_end(Error *err)
     api_set_error(err, kErrorTypeException, "Keyboard interrupt");
     got_int = false;
   } else if (msg_list != NULL && *msg_list != NULL) {
-    int should_free;
+    bool should_free;
     char *msg = get_exception_string(*msg_list,
                                      ET_ERROR,
                                      NULL,
@@ -150,12 +107,36 @@ bool try_end(Error *err)
     if (should_free) {
       xfree(msg);
     }
-  } else if (did_throw) {
-    api_set_error(err, kErrorTypeException, "%s", current_exception->value);
+  } else if (did_throw || need_rethrow) {
+    if (*current_exception->throw_name != NUL) {
+      if (current_exception->throw_lnum != 0) {
+        api_set_error(err, kErrorTypeException, "%s, line %" PRIdLINENR ": %s",
+                      current_exception->throw_name, current_exception->throw_lnum,
+                      current_exception->value);
+      } else {
+        api_set_error(err, kErrorTypeException, "%s: %s",
+                      current_exception->throw_name, current_exception->value);
+      }
+    } else {
+      api_set_error(err, kErrorTypeException, "%s", current_exception->value);
+    }
     discard_current_exception();
   }
 
-  return ERROR_SET(err);
+  assert(msg_list == &tstate->private_msg_list);
+  assert(*msg_list == NULL);
+  assert(current_exception == NULL);
+  assert(!got_int);
+  assert(!did_throw);
+  assert(!need_rethrow);
+  assert(!did_emsg);
+  // Restore the exception context.
+  msg_list = (msglist_T **)tstate->msg_list;
+  current_exception = tstate->current_exception;
+  got_int = tstate->got_int;
+  did_throw = tstate->did_throw;
+  need_rethrow = tstate->need_rethrow;
+  did_emsg = tstate->did_emsg;
 }
 
 /// Recursively expands a vimscript value in a dict
@@ -163,7 +144,7 @@ bool try_end(Error *err)
 /// @param dict The vimscript dict
 /// @param key The key
 /// @param[out] err Details of an error that may have occurred
-Object dict_get_value(dict_T *dict, String key, Error *err)
+Object dict_get_value(dict_T *dict, String key, Arena *arena, Error *err)
 {
   dictitem_T *const di = tv_dict_find(dict, key.data, (ptrdiff_t)key.size);
 
@@ -172,7 +153,7 @@ Object dict_get_value(dict_T *dict, String key, Error *err)
     return (Object)OBJECT_INIT;
   }
 
-  return vim_to_object(&di->di_tv);
+  return vim_to_object(&di->di_tv, arena, true);
 }
 
 dictitem_T *dict_check_writable(dict_T *dict, String key, bool del, Error *err)
@@ -188,7 +169,7 @@ dictitem_T *dict_check_writable(dict_T *dict, String key, bool del, Error *err)
       api_set_error(err, kErrorTypeException, "Key is fixed: %s", key.data);
     }
   } else if (dict->dv_lock) {
-    api_set_error(err, kErrorTypeException, "Dictionary is locked");
+    api_set_error(err, kErrorTypeException, "Dict is locked");
   } else if (key.size == 0) {
     api_set_error(err, kErrorTypeValidation, "Key name is empty");
   } else if (key.size > INT_MAX) {
@@ -209,7 +190,8 @@ dictitem_T *dict_check_writable(dict_T *dict, String key, bool del, Error *err)
 /// @param retval If true the old value will be converted and returned.
 /// @param[out] err Details of an error that may have occurred
 /// @return The old value if `retval` is true and the key was present, else NIL
-Object dict_set_var(dict_T *dict, String key, Object value, bool del, bool retval, Error *err)
+Object dict_set_var(dict_T *dict, String key, Object value, bool del, bool retval, Arena *arena,
+                    Error *err)
 {
   Object rv = OBJECT_INIT;
   dictitem_T *di = dict_check_writable(dict, key, del, err);
@@ -224,8 +206,7 @@ Object dict_set_var(dict_T *dict, String key, Object value, bool del, bool retva
     // Delete the key
     if (di == NULL) {
       // Doesn't exist, fail
-      api_set_error(err, kErrorTypeValidation, "Key not found: %s",
-                    key.data);
+      api_set_error(err, kErrorTypeValidation, "Key not found: %s", key.data);
     } else {
       // Notify watchers
       if (watched) {
@@ -233,7 +214,7 @@ Object dict_set_var(dict_T *dict, String key, Object value, bool del, bool retva
       }
       // Return the old value
       if (retval) {
-        rv = vim_to_object(&di->di_tv);
+        rv = vim_to_object(&di->di_tv, arena, false);
       }
       // Delete the entry
       tv_dict_item_remove(dict, di);
@@ -243,9 +224,7 @@ Object dict_set_var(dict_T *dict, String key, Object value, bool del, bool retva
     typval_T tv;
 
     // Convert the object to a vimscript type in the temporary variable
-    if (!object_to_vim(value, &tv, err)) {
-      return rv;
-    }
+    object_to_vim(value, &tv, err);
 
     typval_T oldtv = TV_INITIAL_VALUE;
 
@@ -254,12 +233,22 @@ Object dict_set_var(dict_T *dict, String key, Object value, bool del, bool retva
       di = tv_dict_item_alloc_len(key.data, key.size);
       tv_dict_add(dict, di);
     } else {
-      if (watched) {
-        tv_copy(&di->di_tv, &oldtv);
-      }
       // Return the old value
       if (retval) {
-        rv = vim_to_object(&di->di_tv);
+        rv = vim_to_object(&di->di_tv, arena, false);
+      }
+      bool type_error = false;
+      if (dict == &vimvardict
+          && !before_set_vvar(key.data, di, &tv, true, watched, &type_error)) {
+        tv_clear(&tv);
+        if (type_error) {
+          api_set_error(err, kErrorTypeValidation,
+                        "Setting v:%s to value with wrong type", key.data);
+        }
+        return rv;
+      }
+      if (watched) {
+        tv_copy(&di->di_tv, &oldtv);
       }
       tv_clear(&di->di_tv);
     }
@@ -391,7 +380,13 @@ String cbuf_to_string(const char *buf, size_t size)
 String cstrn_to_string(const char *str, size_t maxsize)
   FUNC_ATTR_NONNULL_ALL
 {
-  return cbuf_to_string(str, STRNLEN(str, maxsize));
+  return cbuf_to_string(str, strnlen(str, maxsize));
+}
+
+String cstrn_as_string(char *str, size_t maxsize)
+  FUNC_ATTR_NONNULL_ALL
+{
+  return cbuf_as_string(str, strnlen(str, maxsize));
 }
 
 /// Creates a String using the given C string. Unlike
@@ -400,12 +395,12 @@ String cstrn_to_string(const char *str, size_t maxsize)
 /// @param str the C string to use
 /// @return The resulting String, or an empty String if
 ///           str was NULL
-String cstr_as_string(char *str) FUNC_ATTR_PURE
+String cstr_as_string(const char *str) FUNC_ATTR_PURE
 {
   if (str == NULL) {
     return (String)STRING_INIT;
   }
-  return (String){ .data = str, .size = strlen(str) };
+  return (String){ .data = (char *)str, .size = strlen(str) };
 }
 
 /// Return the owned memory of a ga as a String
@@ -429,9 +424,10 @@ String ga_take_string(garray_T *ga)
 /// @param input  Binary string
 /// @param crlf  Also break lines at CR and CRLF.
 /// @return [allocated] String array
-Array string_to_array(const String input, bool crlf)
+Array string_to_array(const String input, bool crlf, Arena *arena)
 {
-  Array ret = ARRAY_DICT_INIT;
+  ArrayBuilder ret = ARRAY_DICT_INIT;
+  kvi_init(ret);
   for (size_t i = 0; i < input.size; i++) {
     const char *start = input.data + i;
     const char *end = start;
@@ -446,56 +442,38 @@ Array string_to_array(const String input, bool crlf)
     if (crlf && *end == CAR && i + 1 < input.size && *(end + 1) == NL) {
       i += 1;  // Advance past CRLF.
     }
-    String s = {
-      .size = line_len,
-      .data = xmemdupz(start, line_len),
-    };
+    String s = CBUF_TO_ARENA_STR(arena, start, line_len);
     memchrsub(s.data, NUL, NL, line_len);
-    ADD(ret, STRING_OBJ(s));
+    kvi_push(ret, STRING_OBJ(s));
     // If line ends at end-of-buffer, add empty final item.
     // This is "readfile()-style", see also ":help channel-lines".
     if (i + 1 == input.size && (*end == NL || (crlf && *end == CAR))) {
-      ADD(ret, STRING_OBJ(STRING_INIT));
+      kvi_push(ret, STRING_OBJ(STRING_INIT));
     }
   }
 
-  return ret;
+  return arena_take_arraybuilder(arena, &ret);
 }
 
-/// Collects `n` buffer lines into array `l`, optionally replacing newlines
-/// with NUL.
-///
-/// @param buf Buffer to get lines from
-/// @param n Number of lines to collect
-/// @param replace_nl Replace newlines ("\n") with NUL
-/// @param start Line number to start from
-/// @param[out] l Lines are copied here
-/// @param err[out] Error, if any
-/// @return true unless `err` was set
-bool buf_collect_lines(buf_T *buf, size_t n, int64_t start, bool replace_nl, Array *l, Error *err)
+/// Normalizes 0-based indexes to buffer line numbers.
+int64_t normalize_index(buf_T *buf, int64_t index, bool end_exclusive, bool *oob)
 {
-  for (size_t i = 0; i < n; i++) {
-    int64_t lnum = start + (int64_t)i;
+  assert(buf->b_ml.ml_line_count > 0);
+  int64_t max_index = buf->b_ml.ml_line_count + (int)end_exclusive - 1;
+  // A negative index counts from the bottom.
+  index = index < 0 ? max_index + index + 1 : index;
 
-    if (lnum >= MAXLNUM) {
-      if (err != NULL) {
-        api_set_error(err, kErrorTypeValidation, "Line index is too high");
-      }
-      return false;
-    }
-
-    const char *bufstr = ml_get_buf(buf, (linenr_T)lnum, false);
-    Object str = STRING_OBJ(cstr_to_string(bufstr));
-
-    if (replace_nl) {
-      // Vim represents NULs as NLs, but this may confuse clients.
-      strchrsub(str.data.string.data, '\n', '\0');
-    }
-
-    l->items[i] = str;
+  // Check for oob and clamp.
+  if (index > max_index) {
+    *oob = true;
+    index = max_index;
+  } else if (index < 0) {
+    *oob = true;
+    index = 0;
   }
-
-  return true;
+  // Convert the index to a 1-based line number.
+  index++;
+  return index;
 }
 
 /// Returns a substring of a buffer line
@@ -504,11 +482,9 @@ bool buf_collect_lines(buf_T *buf, size_t n, int64_t start, bool replace_nl, Arr
 /// @param lnum         Line number (1-based)
 /// @param start_col    Starting byte offset into line (0-based)
 /// @param end_col      Ending byte offset into line (0-based, exclusive)
-/// @param replace_nl   Replace newlines ('\n') with null ('\0')
 /// @param err          Error object
 /// @return The text between start_col and end_col on line lnum of buffer buf
-String buf_get_text(buf_T *buf, int64_t lnum, int64_t start_col, int64_t end_col, bool replace_nl,
-                    Error *err)
+String buf_get_text(buf_T *buf, int64_t lnum, int64_t start_col, int64_t end_col, Error *err)
 {
   String rv = STRING_INIT;
 
@@ -517,40 +493,25 @@ String buf_get_text(buf_T *buf, int64_t lnum, int64_t start_col, int64_t end_col
     return rv;
   }
 
-  const char *bufstr = ml_get_buf(buf, (linenr_T)lnum, false);
-  size_t line_length = strlen(bufstr);
+  char *bufstr = ml_get_buf(buf, (linenr_T)lnum);
+  colnr_T line_length = ml_get_buf_len(buf, (linenr_T)lnum);
 
-  start_col = start_col < 0 ? (int64_t)line_length + start_col + 1 : start_col;
-  end_col = end_col < 0 ? (int64_t)line_length + end_col + 1 : end_col;
+  start_col = start_col < 0 ? line_length + start_col + 1 : start_col;
+  end_col = end_col < 0 ? line_length + end_col + 1 : end_col;
 
-  if (start_col >= MAXCOL || end_col >= MAXCOL) {
-    api_set_error(err, kErrorTypeValidation, "Column index is too high");
-    return rv;
-  }
+  start_col = MIN(MAX(0, start_col), line_length);
+  end_col = MIN(MAX(0, end_col), line_length);
 
   if (start_col > end_col) {
-    api_set_error(err, kErrorTypeValidation, "start_col must be less than end_col");
+    api_set_error(err, kErrorTypeValidation, "start_col must be less than or equal to end_col");
     return rv;
   }
 
-  if ((size_t)start_col >= line_length) {
-    return rv;
-  }
-
-  rv = cstrn_to_string(&bufstr[start_col], (size_t)(end_col - start_col));
-  if (replace_nl) {
-    strchrsub(rv.data, '\n', '\0');
-  }
-
-  return rv;
+  return cbuf_as_string(bufstr + start_col, (size_t)(end_col - start_col));
 }
 
 void api_free_string(String value)
 {
-  if (!value.data) {
-    return;
-  }
-
   xfree(value.data);
 }
 
@@ -561,9 +522,9 @@ Array arena_array(Arena *arena, size_t max_size)
   return arr;
 }
 
-Dictionary arena_dict(Arena *arena, size_t max_size)
+Dict arena_dict(Arena *arena, size_t max_size)
 {
-  Dictionary dict = ARRAY_DICT_INIT;
+  Dict dict = ARRAY_DICT_INIT;
   kv_fixsize_arena(arena, dict, max_size);
   return dict;
 }
@@ -573,8 +534,17 @@ String arena_string(Arena *arena, String str)
   if (str.size) {
     return cbuf_as_string(arena_memdupz(arena, str.data, str.size), str.size);
   } else {
-    return (String)STRING_INIT;
+    return (String){ .data = arena ? "" : xstrdup(""), .size = 0 };
   }
+}
+
+Array arena_take_arraybuilder(Arena *arena, ArrayBuilder *arr)
+{
+  Array ret = arena_array(arena, kv_size(*arr));
+  ret.size = kv_size(*arr);
+  memcpy(ret.items, arr->items, sizeof(ret.items[0]) * ret.size);
+  kvi_destroy(*arr);
+  return ret;
 }
 
 void api_free_object(Object value)
@@ -597,16 +567,13 @@ void api_free_object(Object value)
     api_free_array(value.data.array);
     break;
 
-  case kObjectTypeDictionary:
-    api_free_dictionary(value.data.dictionary);
+  case kObjectTypeDict:
+    api_free_dict(value.data.dict);
     break;
 
   case kObjectTypeLuaRef:
     api_free_luaref(value.data.luaref);
     break;
-
-  default:
-    abort();
   }
 }
 
@@ -619,7 +586,7 @@ void api_free_array(Array value)
   xfree(value.items);
 }
 
-void api_free_dictionary(Dictionary value)
+void api_free_dict(Dict value)
 {
   for (size_t i = 0; i < value.size; i++) {
     api_free_string(value.items[i].key);
@@ -640,102 +607,30 @@ void api_clear_error(Error *value)
   value->type = kErrorTypeNone;
 }
 
-/// @returns a shared value. caller must not modify it!
-Dictionary api_metadata(void)
-{
-  static Dictionary metadata = ARRAY_DICT_INIT;
+// initialized once, never freed
+static ArenaMem mem_for_metadata = NULL;
 
-  if (!metadata.size) {
-    PUT(metadata, "version", DICTIONARY_OBJ(version_dict()));
-    init_function_metadata(&metadata);
-    init_ui_event_metadata(&metadata);
-    init_error_type_metadata(&metadata);
-    init_type_metadata(&metadata);
+/// @returns a shared value. caller must not modify it!
+Object api_metadata(void)
+{
+  static Object metadata = OBJECT_INIT;
+
+  if (metadata.type == kObjectTypeNil) {
+    Arena arena = ARENA_EMPTY;
+    Error err = ERROR_INIT;
+    metadata = unpack((char *)packed_api_metadata, sizeof(packed_api_metadata), &arena, &err);
+    if (ERROR_SET(&err) || metadata.type != kObjectTypeDict) {
+      abort();
+    }
+    mem_for_metadata = arena_finish(&arena);
   }
 
   return metadata;
 }
 
-static void init_function_metadata(Dictionary *metadata)
+String api_metadata_raw(void)
 {
-  msgpack_unpacked unpacked;
-  msgpack_unpacked_init(&unpacked);
-  if (msgpack_unpack_next(&unpacked,
-                          (const char *)funcs_metadata,
-                          sizeof(funcs_metadata),
-                          NULL) != MSGPACK_UNPACK_SUCCESS) {
-    abort();
-  }
-  Object functions;
-  msgpack_rpc_to_object(&unpacked.data, &functions);
-  msgpack_unpacked_destroy(&unpacked);
-  PUT(*metadata, "functions", functions);
-}
-
-static void init_ui_event_metadata(Dictionary *metadata)
-{
-  msgpack_unpacked unpacked;
-  msgpack_unpacked_init(&unpacked);
-  if (msgpack_unpack_next(&unpacked,
-                          (const char *)ui_events_metadata,
-                          sizeof(ui_events_metadata),
-                          NULL) != MSGPACK_UNPACK_SUCCESS) {
-    abort();
-  }
-  Object ui_events;
-  msgpack_rpc_to_object(&unpacked.data, &ui_events);
-  msgpack_unpacked_destroy(&unpacked);
-  PUT(*metadata, "ui_events", ui_events);
-  Array ui_options = ARRAY_DICT_INIT;
-  ADD(ui_options, STRING_OBJ(cstr_to_string("rgb")));
-  for (UIExtension i = 0; i < kUIExtCount; i++) {
-    if (ui_ext_names[i][0] != '_') {
-      ADD(ui_options, STRING_OBJ(cstr_to_string(ui_ext_names[i])));
-    }
-  }
-  PUT(*metadata, "ui_options", ARRAY_OBJ(ui_options));
-}
-
-static void init_error_type_metadata(Dictionary *metadata)
-{
-  Dictionary types = ARRAY_DICT_INIT;
-
-  Dictionary exception_metadata = ARRAY_DICT_INIT;
-  PUT(exception_metadata, "id", INTEGER_OBJ(kErrorTypeException));
-
-  Dictionary validation_metadata = ARRAY_DICT_INIT;
-  PUT(validation_metadata, "id", INTEGER_OBJ(kErrorTypeValidation));
-
-  PUT(types, "Exception", DICTIONARY_OBJ(exception_metadata));
-  PUT(types, "Validation", DICTIONARY_OBJ(validation_metadata));
-
-  PUT(*metadata, "error_types", DICTIONARY_OBJ(types));
-}
-
-static void init_type_metadata(Dictionary *metadata)
-{
-  Dictionary types = ARRAY_DICT_INIT;
-
-  Dictionary buffer_metadata = ARRAY_DICT_INIT;
-  PUT(buffer_metadata, "id",
-      INTEGER_OBJ(kObjectTypeBuffer - EXT_OBJECT_TYPE_SHIFT));
-  PUT(buffer_metadata, "prefix", STRING_OBJ(cstr_to_string("nvim_buf_")));
-
-  Dictionary window_metadata = ARRAY_DICT_INIT;
-  PUT(window_metadata, "id",
-      INTEGER_OBJ(kObjectTypeWindow - EXT_OBJECT_TYPE_SHIFT));
-  PUT(window_metadata, "prefix", STRING_OBJ(cstr_to_string("nvim_win_")));
-
-  Dictionary tabpage_metadata = ARRAY_DICT_INIT;
-  PUT(tabpage_metadata, "id",
-      INTEGER_OBJ(kObjectTypeTabpage - EXT_OBJECT_TYPE_SHIFT));
-  PUT(tabpage_metadata, "prefix", STRING_OBJ(cstr_to_string("nvim_tabpage_")));
-
-  PUT(types, "Buffer", DICTIONARY_OBJ(buffer_metadata));
-  PUT(types, "Window", DICTIONARY_OBJ(window_metadata));
-  PUT(types, "Tabpage", DICTIONARY_OBJ(tabpage_metadata));
-
-  PUT(*metadata, "types", DICTIONARY_OBJ(types));
+  return cbuf_as_string((char *)packed_api_metadata, sizeof(packed_api_metadata));
 }
 
 // all the copy_[object] functions allow arena=NULL,
@@ -760,9 +655,9 @@ Array copy_array(Array array, Arena *arena)
   return rv;
 }
 
-Dictionary copy_dictionary(Dictionary dict, Arena *arena)
+Dict copy_dict(Dict dict, Arena *arena)
 {
-  Dictionary rv = arena_dict(arena, dict.size);
+  Dict rv = arena_dict(arena, dict.size);
   for (size_t i = 0; i < dict.size; i++) {
     KeyValuePair item = dict.items[i];
     PUT_C(rv, copy_string(item.key, arena).data, copy_object(item.value, arena));
@@ -789,15 +684,13 @@ Object copy_object(Object obj, Arena *arena)
   case kObjectTypeArray:
     return ARRAY_OBJ(copy_array(obj.data.array, arena));
 
-  case kObjectTypeDictionary:
-    return DICTIONARY_OBJ(copy_dictionary(obj.data.dictionary, arena));
+  case kObjectTypeDict:
+    return DICT_OBJ(copy_dict(obj.data.dict, arena));
 
   case kObjectTypeLuaRef:
     return LUAREF_OBJ(api_new_luaref(obj.data.luaref));
-
-  default:
-    abort();
   }
+  UNREACHABLE;
 }
 
 void api_set_error(Error *err, ErrorType errType, const char *format, ...)
@@ -833,7 +726,7 @@ bool api_object_to_bool(Object obj, const char *what, bool nil_value, Error *err
   } else if (obj.type == kObjectTypeInteger) {
     return obj.data.integer;  // C semantics: non-zero int is true
   } else if (obj.type == kObjectTypeNil) {
-    return nil_value;  // caller decides what NIL (missing retval in lua) means
+    return nil_value;  // caller decides what NIL (missing retval in Lua) means
   } else {
     api_set_error(err, kErrorTypeValidation, "%s is not a boolean", what);
     return false;
@@ -846,43 +739,63 @@ int object_to_hl_id(Object obj, const char *what, Error *err)
     String str = obj.data.string;
     return str.size ? syn_check_group(str.data, str.size) : 0;
   } else if (obj.type == kObjectTypeInteger) {
-    return MAX((int)obj.data.integer, 0);
+    int id = (int)obj.data.integer;
+    return (1 <= id && id <= highlight_num_groups()) ? id : 0;
   } else {
-    api_set_error(err, kErrorTypeValidation,
-                  "%s is not a valid highlight", what);
+    api_set_error(err, kErrorTypeValidation, "Invalid hl_group: %s", what);
     return 0;
   }
 }
 
-HlMessage parse_hl_msg(Array chunks, Error *err)
+char *api_typename(ObjectType t)
+{
+  switch (t) {
+  case kObjectTypeNil:
+    return "nil";
+  case kObjectTypeBoolean:
+    return "Boolean";
+  case kObjectTypeInteger:
+    return "Integer";
+  case kObjectTypeFloat:
+    return "Float";
+  case kObjectTypeString:
+    return "String";
+  case kObjectTypeArray:
+    return "Array";
+  case kObjectTypeDict:
+    return "Dict";
+  case kObjectTypeLuaRef:
+    return "Function";
+  case kObjectTypeBuffer:
+    return "Buffer";
+  case kObjectTypeWindow:
+    return "Window";
+  case kObjectTypeTabpage:
+    return "Tabpage";
+  }
+  UNREACHABLE;
+}
+
+HlMessage parse_hl_msg(Array chunks, bool is_err, Error *err)
 {
   HlMessage hl_msg = KV_INITIAL_VALUE;
   for (size_t i = 0; i < chunks.size; i++) {
-    if (chunks.items[i].type != kObjectTypeArray) {
-      api_set_error(err, kErrorTypeValidation, "Chunk is not an array");
+    VALIDATE_T("chunk", kObjectTypeArray, chunks.items[i].type, {
       goto free_exit;
-    }
+    });
     Array chunk = chunks.items[i].data.array;
-    if (chunk.size == 0 || chunk.size > 2
-        || chunk.items[0].type != kObjectTypeString
-        || (chunk.size == 2 && chunk.items[1].type != kObjectTypeString)) {
-      api_set_error(err, kErrorTypeValidation,
-                    "Chunk is not an array with one or two strings");
+    VALIDATE((chunk.size > 0 && chunk.size <= 2 && chunk.items[0].type == kObjectTypeString),
+             "%s", "Invalid chunk: expected Array with 1 or 2 Strings", {
       goto free_exit;
-    }
+    });
 
     String str = copy_string(chunk.items[0].data.string, NULL);
 
-    int attr = 0;
+    int hl_id = is_err ? HLF_E : 0;
     if (chunk.size == 2) {
-      String hl = chunk.items[1].data.string;
-      if (hl.size > 0) {
-        // TODO(bfredl): use object_to_hl_id and allow integer
-        int hl_id = syn_check_group(hl.data, hl.size);
-        attr = hl_id > 0 ? syn_id2attr(hl_id) : 0;
-      }
+      hl_id = object_to_hl_id(chunk.items[1], "text highlight", err);
     }
-    kv_push(hl_msg, ((HlMessageChunk){ .text = str, .attr = attr }));
+    kv_push(hl_msg, ((HlMessageChunk){ .text = str, .hl_id = hl_id }));
   }
 
   return hl_msg;
@@ -892,26 +805,199 @@ free_exit:
   return (HlMessage)KV_INITIAL_VALUE;
 }
 
-bool api_dict_to_keydict(void *rv, field_hash hashy, Dictionary dict, Error *err)
+// see also nlua_pop_keydict for the lua specific implementation
+bool api_dict_to_keydict(void *retval, FieldHashfn hashy, Dict dict, Error *err)
 {
   for (size_t i = 0; i < dict.size; i++) {
     String k = dict.items[i].key;
-    Object *field = hashy(rv, k.data, k.size);
+    KeySetLink *field = hashy(k.data, k.size);
     if (!field) {
       api_set_error(err, kErrorTypeValidation, "Invalid key: '%.*s'", (int)k.size, k.data);
       return false;
     }
 
-    *field = dict.items[i].value;
+    if (field->opt_index >= 0) {
+      OptKeySet *ks = (OptKeySet *)retval;
+      ks->is_set_ |= (1ULL << field->opt_index);
+    }
+
+    char *mem = ((char *)retval + field->ptr_off);
+    Object *value = &dict.items[i].value;
+
+    if (field->type == kObjectTypeNil) {
+      *(Object *)mem = *value;
+    } else if (field->type == kObjectTypeInteger) {
+      if (field->is_hlgroup) {
+        int hl_id = 0;
+        if (value->type != kObjectTypeNil) {
+          hl_id = object_to_hl_id(*value, k.data, err);
+          if (ERROR_SET(err)) {
+            return false;
+          }
+        }
+        *(Integer *)mem = hl_id;
+      } else {
+        VALIDATE_T(field->str, kObjectTypeInteger, value->type, {
+          return false;
+        });
+
+        *(Integer *)mem = value->data.integer;
+      }
+    } else if (field->type == kObjectTypeFloat) {
+      Float *val = (Float *)mem;
+      if (value->type == kObjectTypeInteger) {
+        *val = (Float)value->data.integer;
+      } else {
+        VALIDATE_T(field->str, kObjectTypeFloat, value->type, {
+          return false;
+        });
+        *val = value->data.floating;
+      }
+    } else if (field->type == kObjectTypeBoolean) {
+      // caller should check HAS_KEY to override the nil behavior, or GET_BOOL_OR_TRUE
+      // to directly use true when nil
+      *(Boolean *)mem = api_object_to_bool(*value, field->str, false, err);
+      if (ERROR_SET(err)) {
+        return false;
+      }
+    } else if (field->type == kObjectTypeString) {
+      VALIDATE_T(field->str, kObjectTypeString, value->type, {
+        return false;
+      });
+      *(String *)mem = value->data.string;
+    } else if (field->type == kObjectTypeArray) {
+      VALIDATE_T(field->str, kObjectTypeArray, value->type, {
+        return false;
+      });
+      *(Array *)mem = value->data.array;
+    } else if (field->type == kObjectTypeDict) {
+      Dict *val = (Dict *)mem;
+      // allow empty array as empty dict for lua (directly or via lua-client RPC)
+      if (value->type == kObjectTypeArray && value->data.array.size == 0) {
+        *val = (Dict)ARRAY_DICT_INIT;
+      } else if (value->type == kObjectTypeDict) {
+        *val = value->data.dict;
+      } else {
+        api_err_exp(err, field->str, api_typename((ObjectType)field->type),
+                    api_typename(value->type));
+        return false;
+      }
+    } else if (field->type == kObjectTypeBuffer || field->type == kObjectTypeWindow
+               || field->type == kObjectTypeTabpage) {
+      if (value->type == kObjectTypeInteger || value->type == (ObjectType)field->type) {
+        *(handle_T *)mem = (handle_T)value->data.integer;
+      } else {
+        api_err_exp(err, field->str, api_typename((ObjectType)field->type),
+                    api_typename(value->type));
+        return false;
+      }
+    } else if (field->type == kObjectTypeLuaRef) {
+      api_set_error(err, kErrorTypeValidation, "Invalid key: '%.*s' is only allowed from Lua",
+                    (int)k.size, k.data);
+      return false;
+    } else {
+      abort();
+    }
   }
 
   return true;
 }
 
-void api_free_keydict(void *dict, KeySetLink *table)
+Dict api_keydict_to_dict(void *value, KeySetLink *table, size_t max_size, Arena *arena)
+{
+  Dict rv = arena_dict(arena, max_size);
+  for (size_t i = 0; table[i].str; i++) {
+    KeySetLink *field = &table[i];
+    bool is_set = true;
+    if (field->opt_index >= 0) {
+      OptKeySet *ks = (OptKeySet *)value;
+      is_set = ks->is_set_ & (1ULL << field->opt_index);
+    }
+
+    if (!is_set) {
+      continue;
+    }
+
+    char *mem = ((char *)value + field->ptr_off);
+    Object val = NIL;
+
+    if (field->type == kObjectTypeNil) {
+      val = *(Object *)mem;
+    } else if (field->type == kObjectTypeInteger) {
+      val = INTEGER_OBJ(*(Integer *)mem);
+    } else if (field->type == kObjectTypeFloat) {
+      val = FLOAT_OBJ(*(Float *)mem);
+    } else if (field->type == kObjectTypeBoolean) {
+      val = BOOLEAN_OBJ(*(Boolean *)mem);
+    } else if (field->type == kObjectTypeString) {
+      val = STRING_OBJ(*(String *)mem);
+    } else if (field->type == kObjectTypeArray) {
+      val = ARRAY_OBJ(*(Array *)mem);
+    } else if (field->type == kObjectTypeDict) {
+      val = DICT_OBJ(*(Dict *)mem);
+    } else if (field->type == kObjectTypeBuffer || field->type == kObjectTypeWindow
+               || field->type == kObjectTypeTabpage) {
+      val.data.integer = *(handle_T *)mem;
+      val.type = (ObjectType)field->type;
+    } else if (field->type == kObjectTypeLuaRef) {
+      // do nothing
+    } else {
+      abort();
+    }
+
+    PUT_C(rv, field->str, val);
+  }
+
+  return rv;
+}
+
+void api_luarefs_free_object(Object value)
+{
+  // TODO(bfredl): this is more complicated than it needs to be.
+  // we should be able to lock down more specifically where luarefs can be
+  switch (value.type) {
+  case kObjectTypeLuaRef:
+    api_free_luaref(value.data.luaref);
+    break;
+
+  case kObjectTypeArray:
+    api_luarefs_free_array(value.data.array);
+    break;
+
+  case kObjectTypeDict:
+    api_luarefs_free_dict(value.data.dict);
+    break;
+
+  default:
+    break;
+  }
+}
+
+void api_luarefs_free_keydict(void *dict, KeySetLink *table)
 {
   for (size_t i = 0; table[i].str; i++) {
-    api_free_object(*(Object *)((char *)dict + table[i].ptr_off));
+    char *mem = ((char *)dict + table[i].ptr_off);
+    if (table[i].type == kObjectTypeNil) {
+      api_luarefs_free_object(*(Object *)mem);
+    } else if (table[i].type == kObjectTypeLuaRef) {
+      api_free_luaref(*(LuaRef *)mem);
+    } else if (table[i].type == kObjectTypeDict) {
+      api_luarefs_free_dict(*(Dict *)mem);
+    }
+  }
+}
+
+void api_luarefs_free_array(Array value)
+{
+  for (size_t i = 0; i < value.size; i++) {
+    api_luarefs_free_object(value.items[i]);
+  }
+}
+
+void api_luarefs_free_dict(Dict value)
+{
+  for (size_t i = 0; i < value.size; i++) {
+    api_luarefs_free_object(value.items[i].value);
   }
 }
 
@@ -942,7 +1028,7 @@ bool set_mark(buf_T *buf, String name, Integer line, Integer col, Error *err)
     }
   }
   assert(INT32_MIN <= line && line <= INT32_MAX);
-  pos_T pos = { (linenr_T)line, (int)col, (int)col };
+  pos_T pos = { (linenr_T)line, (int)col, 0 };
   res = setmark_pos(*name.data, &pos, buf->handle, NULL);
   if (!res) {
     if (deleting) {
@@ -957,12 +1043,14 @@ bool set_mark(buf_T *buf, String name, Integer line, Integer col, Error *err)
 }
 
 /// Get default statusline highlight for window
-const char *get_default_stl_hl(win_T *wp, bool use_winbar)
+const char *get_default_stl_hl(win_T *wp, bool use_winbar, int stc_hl_id)
 {
   if (wp == NULL) {
     return "TabLineFill";
   } else if (use_winbar) {
     return (wp == curwin) ? "WinBar" : "WinBarNC";
+  } else if (stc_hl_id > 0) {
+    return syn_id2name(stc_hl_id);
   } else {
     return (wp == curwin) ? "StatusLine" : "StatusLineNC";
   }

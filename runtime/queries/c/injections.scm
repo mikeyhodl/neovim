@@ -1,3 +1,2 @@
-(preproc_arg) @c
-
-; (comment) @comment
+((preproc_arg) @injection.content
+  (#set! injection.self))

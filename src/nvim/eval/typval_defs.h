@@ -1,21 +1,23 @@
-#ifndef NVIM_EVAL_TYPVAL_DEFS_H
-#define NVIM_EVAL_TYPVAL_DEFS_H
+#pragma once
 
 #include <inttypes.h>
 #include <limits.h>
+#include <stdbool.h>
 
-#include "nvim/garray.h"
-#include "nvim/hashtab.h"
-#include "nvim/lib/queue.h"
-#include "nvim/pos.h"
-#include "nvim/types.h"
+#include "nvim/garray_defs.h"
+#include "nvim/hashtab_defs.h"
+#include "nvim/lib/queue_defs.h"
+#include "nvim/pos_defs.h"
+#include "nvim/types_defs.h"
 
-/// Type used for VimL VAR_NUMBER values
+/// Type used for Vimscript VAR_NUMBER values
 typedef int64_t varnumber_T;
 typedef uint64_t uvarnumber_T;
 
-/// Refcount for dict or list that should not be freed
-enum { DO_NOT_FREE_CNT = (INT_MAX / 2), };
+enum {
+  /// Refcount for dict or list that should not be freed
+  DO_NOT_FREE_CNT = (INT_MAX / 2),
+};
 
 /// Additional values for tv_list_alloc() len argument
 enum ListLenSpecials {
@@ -73,7 +75,7 @@ typedef struct {
 #define CALLBACK_NONE ((Callback)CALLBACK_INIT)
 
 /// Structure holding dictionary watcher
-typedef struct dict_watcher {
+typedef struct {
   Callback callback;
   char *key_pattern;
   size_t key_pattern_len;
@@ -100,20 +102,33 @@ typedef enum {
   VAR_FIXED = 2,     ///< Locked forever.
 } VarLockStatus;
 
-/// VimL variable types, for use in typval_T.v_type
+/// Vimscript variable types, for use in typval_T.v_type
 typedef enum {
   VAR_UNKNOWN = 0,  ///< Unknown (unspecified) value.
   VAR_NUMBER,       ///< Number, .v_number is used.
   VAR_STRING,       ///< String, .v_string is used.
   VAR_FUNC,         ///< Function reference, .v_string is used as function name.
   VAR_LIST,         ///< List, .v_list is used.
-  VAR_DICT,         ///< Dictionary, .v_dict is used.
+  VAR_DICT,         ///< Dict, .v_dict is used.
   VAR_FLOAT,        ///< Floating-point value, .v_float is used.
   VAR_BOOL,         ///< true, false
   VAR_SPECIAL,      ///< Special value (null), .v_special is used.
   VAR_PARTIAL,      ///< Partial, .v_partial is used.
   VAR_BLOB,         ///< Blob, .v_blob is used.
 } VarType;
+
+/// Type values for type().
+enum {
+  VAR_TYPE_NUMBER  = 0,
+  VAR_TYPE_STRING  = 1,
+  VAR_TYPE_FUNC    = 2,
+  VAR_TYPE_LIST    = 3,
+  VAR_TYPE_DICT    = 4,
+  VAR_TYPE_FLOAT   = 5,
+  VAR_TYPE_BOOL    = 6,
+  VAR_TYPE_SPECIAL = 7,
+  VAR_TYPE_BLOB    = 10,
+};
 
 /// Structure that holds an internal variable value
 typedef struct {
@@ -126,7 +141,7 @@ typedef struct {
     float_T v_float;            ///< Floating-point number, for VAR_FLOAT.
     char *v_string;             ///< String, for VAR_STRING and VAR_FUNC, can be NULL.
     list_T *v_list;             ///< List for VAR_LIST, can be NULL.
-    dict_T *v_dict;             ///< Dictionary for VAR_DICT, can be NULL.
+    dict_T *v_dict;             ///< Dict for VAR_DICT, can be NULL.
     partial_T *v_partial;       ///< Closure: function with args.
     blob_T *v_blob;             ///< Blob for VAR_BLOB, can be NULL.
   } vval;                       ///< Actual value.
@@ -206,7 +221,7 @@ typedef struct {
   struct { \
     typval_T di_tv;  /* Structure that holds scope dictionary itself. */ \
     uint8_t di_flags;  /* Flags. */ \
-    char_u di_key[__VA_ARGS__];  /* Key value. */ \
+    char di_key[__VA_ARGS__];  /* Key value. */  /* NOLINT(runtime/arrays)*/ \
   }
 
 /// Structure to hold a scope dictionary
@@ -244,7 +259,7 @@ struct dictvar_S {
   dict_T *dv_copydict;    ///< Copied dict used by deepcopy().
   dict_T *dv_used_next;   ///< Next dictionary in used dictionaries list.
   dict_T *dv_used_prev;   ///< Previous dictionary in used dictionaries list.
-  QUEUE watchers;         ///< Dictionary key watchers set by user code.
+  QUEUE watchers;         ///< Dict key watchers set by user code.
 
   LuaRef lua_table_ref;
 };
@@ -273,38 +288,41 @@ typedef struct {
   linenr_T sc_lnum;  ///< line number
 } sctx_T;
 
-/// Maximum number of function arguments
-enum { MAX_FUNC_ARGS = 20, };
-/// Short variable name length
-enum { VAR_SHORT_LEN = 20, };
-/// Number of fixed variables used for arguments
-enum { FIXVAR_CNT = 12, };
+/// Stores an identifier of a script or channel that last set an option.
+typedef struct {
+  sctx_T script_ctx;       /// script context where the option was last set
+  uint64_t channel_id;     /// Only used when script_id is SID_API_CLIENT.
+} LastSet;
+
+enum { MAX_FUNC_ARGS = 20, };  ///< Maximum number of function arguments
+enum { VAR_SHORT_LEN = 20, };  ///< Short variable name length
+enum { FIXVAR_CNT = 12, };     ///< Number of fixed variables used for arguments
 
 /// Structure to hold info for a function that is currently being executed.
 typedef struct funccall_S funccall_T;
 
 struct funccall_S {
-  ufunc_T *func;  ///< Function being called.
-  int linenr;  ///< Next line to be executed.
-  int returned;  ///< ":return" used.
-  /// Fixed variables for arguments.
-  TV_DICTITEM_STRUCT(VAR_SHORT_LEN + 1) fixvar[FIXVAR_CNT];
-  dict_T l_vars;  ///< l: local function variables.
-  ScopeDictDictItem l_vars_var;  ///< Variable for l: scope.
-  dict_T l_avars;  ///< a: argument variables.
-  ScopeDictDictItem l_avars_var;  ///< Variable for a: scope.
-  list_T l_varlist;  ///< List for a:000.
-  listitem_T l_listitems[MAX_FUNC_ARGS];  ///< List items for a:000.
-  typval_T *rettv;  ///< Return value.
-  linenr_T breakpoint;  ///< Next line with breakpoint or zero.
-  int dbg_tick;  ///< debug_tick when breakpoint was set.
-  int level;  ///< Top nesting level of executed function.
-  proftime_T prof_child;  ///< Time spent in a child.
-  funccall_T *caller;  ///< Calling function or NULL; or next funccal in
-                       ///< list pointed to by previous_funccal.
-  int fc_refcount;  ///< Number of user functions that reference this funccall.
-  int fc_copyID;  ///< CopyID used for garbage collection.
-  garray_T fc_funcs;  ///< List of ufunc_T* which keep a reference to "func".
+  ufunc_T *fc_func;                  ///< Function being called.
+  int fc_linenr;                     ///< Next line to be executed.
+  int fc_returned;                   ///< ":return" used.
+  TV_DICTITEM_STRUCT(VAR_SHORT_LEN + 1) fc_fixvar[FIXVAR_CNT];  ///< Fixed variables for arguments.
+  dict_T fc_l_vars;                  ///< l: local function variables.
+  ScopeDictDictItem fc_l_vars_var;   ///< Variable for l: scope.
+  dict_T fc_l_avars;                 ///< a: argument variables.
+  ScopeDictDictItem fc_l_avars_var;  ///< Variable for a: scope.
+  list_T fc_l_varlist;                       ///< List for a:000.
+  listitem_T fc_l_listitems[MAX_FUNC_ARGS];  ///< List items for a:000.
+  typval_T *fc_rettv;                ///< Return value.
+  linenr_T fc_breakpoint;            ///< Next line with breakpoint or zero.
+  int fc_dbg_tick;                   ///< "debug_tick" when breakpoint was set.
+  int fc_level;                      ///< Top nesting level of executed function.
+  garray_T fc_defer;                 ///< Functions to be called on return.
+  proftime_T fc_prof_child;          ///< Time spent in a child.
+  funccall_T *fc_caller;             ///< Calling function or NULL; or next funccal in
+                                     ///< list pointed to by previous_funccal.
+  int fc_refcount;                   ///< Number of user functions that reference this funccall.
+  int fc_copyID;                     ///< CopyID used for garbage collection.
+  garray_T fc_ufuncs;                ///< List of ufunc_T* which keep a reference to "fc_func".
 };
 
 /// Structure to hold info for a user function.
@@ -337,15 +355,16 @@ struct ufunc {
                            ///< used for s: variables
   int uf_refcount;      ///< reference count, see func_name_refcount()
   funccall_T *uf_scoped;       ///< l: local variables for closure
-  char_u *uf_name_exp;  ///< if "uf_name[]" starts with SNR the name with
+  char *uf_name_exp;    ///< if "uf_name[]" starts with SNR the name with
                         ///< "<SNR>" as a string, otherwise NULL
-  char_u uf_name[];  ///< Name of function (actual size equals name);
+  char uf_name[];    ///< Name of function (actual size equals name);
                      ///< can start with <SNR>123_
                      ///< (<SNR> is K_SPECIAL KS_EXTRA KE_SNR)
 };
 
 struct partial_S {
   int pt_refcount;    ///< Reference count.
+  int pt_copyID;
   char *pt_name;      ///< Function name; when NULL use pt_func->name.
   ufunc_T *pt_func;   ///< Function pointer; when NULL lookup function with pt_name.
   bool pt_auto;       ///< When true the partial was created by using dict.member
@@ -366,34 +385,3 @@ typedef struct list_stack_S {
   list_T *list;
   struct list_stack_S *prev;
 } list_stack_T;
-
-/// Structure representing one list item, used for sort array.
-typedef struct {
-  listitem_T *item;  ///< Sorted list item.
-  int idx;  ///< Sorted list item index.
-} ListSortItem;
-
-typedef int (*ListSorter)(const void *, const void *);
-
-#ifdef LOG_LIST_ACTIONS
-/// List actions log entry
-typedef struct {
-  uintptr_t l;  ///< List log entry belongs to.
-  uintptr_t li1;  ///< First list item log entry belongs to, if applicable.
-  uintptr_t li2;  ///< Second list item log entry belongs to, if applicable.
-  int len;  ///< List length when log entry was created.
-  const char *action;  ///< Logged action.
-} ListLogEntry;
-
-typedef struct list_log ListLog;
-
-/// List actions log
-struct list_log {
-  ListLog *next;  ///< Next chunk or NULL.
-  size_t capacity;  ///< Number of entries in current chunk.
-  size_t size;  ///< Current chunk size.
-  ListLogEntry entries[];  ///< Actual log entries.
-};
-#endif
-
-#endif  // NVIM_EVAL_TYPVAL_DEFS_H

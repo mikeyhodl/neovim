@@ -4,9 +4,10 @@
 -- followed by an operator and those executed via Operator-pending mode. Also
 -- part of the test are mappings, counts, and repetition with the . command.
 
-local helpers = require('test.functional.helpers')(after_each)
-local feed, insert, source = helpers.feed, helpers.insert, helpers.source
-local clear, feed_command, expect = helpers.clear, helpers.feed_command, helpers.expect
+local n = require('test.functional.testnvim')()
+
+local feed, insert, source = n.feed, n.insert, n.source
+local clear, feed_command, expect = n.clear, n.feed_command, n.expect
 
 -- Vim script user functions needed for some of the test cases.
 local function source_user_functions()

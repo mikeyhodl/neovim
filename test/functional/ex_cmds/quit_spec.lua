@@ -1,5 +1,6 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear = helpers.clear
+local n = require('test.functional.testnvim')()
+
+local clear = n.clear
 
 describe(':qa', function()
   before_each(function()
@@ -11,4 +12,3 @@ describe(':qa', function()
     -- errors
   end)
 end)
-

@@ -1,20 +1,17 @@
 " Vim filetype plugin
-" Language:     Neovim checkhealth buffer
-" Last Change:  2021 Dec 15
+" Language:     Nvim :checkhealth buffer
 
 if exists("b:did_ftplugin")
   finish
 endif
 
-runtime! ftplugin/markdown.vim ftplugin/markdown_*.vim ftplugin/markdown/*.vim
+runtime! ftplugin/help.vim
 
-setlocal wrap breakindent linebreak
-setlocal conceallevel=2 concealcursor=nc
-setlocal keywordprg=:help
+setlocal wrap breakindent linebreak nolist
 let &l:iskeyword='!-~,^*,^|,^",192-255'
 
 if exists("b:undo_ftplugin")
-  let b:undo_ftplugin .= "|setl wrap< bri< lbr< cole< cocu< kp< isk<"
+  let b:undo_ftplugin .= "|setl wrap< bri< lbr< kp< isk< list<"
 else
-  let b:undo_ftplugin = "setl wrap< bri< lbr< cole< cocu< kp< isk<"
+  let b:undo_ftplugin = "setl wrap< bri< lbr< kp< isk< list<"
 endif

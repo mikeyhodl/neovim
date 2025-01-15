@@ -1,13 +1,12 @@
-#ifndef NVIM_VIML_PARSER_EXPRESSIONS_H
-#define NVIM_VIML_PARSER_EXPRESSIONS_H
+#pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#include "nvim/eval/typval.h"
-#include "nvim/types.h"
-#include "nvim/viml/parser/parser.h"
+#include "nvim/eval/typval_defs.h"
+#include "nvim/types_defs.h"
+#include "nvim/viml/parser/parser_defs.h"
 
 // Defines whether to ignore case:
 //    ==   kCCStrategyUseOption
@@ -217,7 +216,7 @@ typedef enum {
   /// kExprNodeCurlyBracesIdentifier.
   kExprNodeUnknownFigure,
   kExprNodeLambda,  ///< Lambda.
-  kExprNodeDictLiteral,  ///< Dictionary literal.
+  kExprNodeDictLiteral,  ///< Dict literal.
   kExprNodeCurlyBracesIdentifier,  ///< Part of the curly braces name.
   kExprNodeComma,  ///< Comma “operator”.
   kExprNodeColon,  ///< Colon “operator”.
@@ -385,5 +384,3 @@ extern const char *const expr_asgn_type_tab[];
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "viml/parser/expressions.h.generated.h"
 #endif
-
-#endif  // NVIM_VIML_PARSER_EXPRESSIONS_H

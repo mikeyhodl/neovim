@@ -53,11 +53,28 @@ active		  yes		 yes		  'a'
 hidden		  no		 yes		  'h'
 inactive	  no		 no		  ' '
 
-Note: All CTRL-W commands can also be executed with |:wincmd|, for those
-places where a Normal mode command can't be used or is inconvenient.
+							*buffer-reuse*
+Each buffer has a unique number and the number will not change within a Vim
+session.  The |bufnr()| and |bufname()| functions can be used to convert
+between a buffer name and the buffer number.  There is one exception: if a new
+empty buffer is created and it is not modified, the buffer will be re-used
+when loading another file into that buffer. This also means the buffer number
+will not change.
 
 The main Vim window can hold several split windows.  There are also tab pages
 |tab-page|, each of which can hold multiple windows.
+
+							*focusable*
+If a window is focusable, it is part of the "navigation stack", that is,
+editor commands such as :windo, |CTRL-W|, etc., will consider the window as
+one that can be made the "current window". A non-focusable window will be
+skipped by such commands (though it can be explicitly focused by
+|nvim_set_current_win()|). Non-focusable windows are not listed by |:tabs|, and
+are not counted by the default 'tabline'.
+
+Windows (especially floating windows) can have many other |api-win_config|
+properties such as "hide" and "fixed" which also affect behavior.
+
 					*window-ID* *winid* *windowid*
 Each window has a unique identifier called the window ID.  This identifier
 will not change within a Vim session. The |win_getid()| and |win_id2tabwin()|
@@ -69,9 +86,6 @@ across tabs.  For most functions that take a window ID or a window number, the
 window number only applies to the current tab, while the window ID can refer
 to a window in any tab.
 
-Each buffer has a unique number and the number will not change within a Vim
-session.  The |bufnr()| and |bufname()| functions can be used to convert
-between a buffer name and the buffer number.
 
 ==============================================================================
 2. Starting Vim						*windows-starting*
@@ -169,7 +183,7 @@ CTRL-W v						*CTRL-W_v*
 		it doesn't!
 
 CTRL-W n						*CTRL-W_n*
-CTRL-W CTRL_N						*CTRL-W_CTRL-N*
+CTRL-W CTRL-N						*CTRL-W_CTRL-N*
 :[N]new [++opt] [+cmd]					*:new*
 		Create a new window and start editing an empty file in it.
 		Make new window N high (default is to use half the existing
@@ -223,7 +237,7 @@ CTRL-W ^	Split the current window in two and edit the alternate file.
 
 CTRL-W ge						*CTRL-W_ge*
 		Detach the current window as an external window.
-		Only available when using an UI with |ui-multigrid| support.
+		Only available when using a UI with |ui-multigrid| support.
 
 Note that the 'splitbelow' and 'splitright' options influence where a new
 window will appear.
@@ -242,8 +256,10 @@ and 'winminwidth' are relevant.
 						*:hor* *:horizontal*
 :hor[izontal] {cmd}
 		Execute {cmd}.  Currently only makes a difference for
-		`horizontal wincmd =`, which will equalize windows only
-		horizontally.
+		the following commands:
+		- `:wincmd =`: equalize windows only horizontally.
+		- |:terminal|: open a |terminal| buffer in a split window.
+		- |:checkhealth|: open a healthcheck buffer in a split window.
 
 :lefta[bove] {cmd}				*:lefta* *:leftabove*
 :abo[veleft] {cmd}				*:abo* *:aboveleft*
@@ -284,8 +300,8 @@ Opens a vertically split, full-height window on the "tags" file at the far
 left of the Vim window.
 
 
+------------------------------------------------------------------------------
 Closing a window
-----------------
 
 :q[uit]
 :{count}q[uit]						*:count_quit*
@@ -391,6 +407,11 @@ CTRL-W CTRL-O					*CTRL-W_CTRL-O* *:on* *:only*
 		given, then they become hidden.  But modified buffers are
 		never abandoned, so changes cannot get lost.
 
+							*:fc* *:fclose*
+:[count]fc[lose][!]
+		Close [count] floating windows with the highest zindex values.
+		'!' to close all floating windows.
+
 ==============================================================================
 4. Moving cursor to other windows			*window-move-cursor*
 
@@ -416,18 +437,19 @@ CTRL-W l	Move cursor to Nth window right of current one.  Uses the
 		cursor position to select between alternatives.
 
 CTRL-W w					*CTRL-W_w* *CTRL-W_CTRL-W*
-CTRL-W CTRL-W	Without count: move cursor to window below/right of the
-		current one.  If there is no window below or right, go to
-		top-left window.
-		With count: go to Nth window (windows are numbered from
-		top-left to bottom-right).  To obtain the window number see
-		|bufwinnr()| and |winnr()|.  When N is larger than the number
-		of windows go to the last window.
+CTRL-W CTRL-W	Without count: move cursor to the |focusable| window
+		below/right of the current one.  If there is no (focusable)
+		window below or right, go to top-left window. With count: go
+		to Nth window (windows are numbered from top-left to
+		bottom-right).  To obtain the window number see |bufwinnr()|
+		and |winnr()|.  When N is larger than the number of windows go
+		to the last window.
 
 						*CTRL-W_W*
-CTRL-W W	Without count: move cursor to window above/left of current
-		one.  If there is no window above or left, go to bottom-right
-		window.  With count: go to Nth window, like with CTRL-W w.
+CTRL-W W	Without count: move cursor to the |focusable| window
+		above/left of current one.  If there is no window above or
+		left, go to bottom-right window.  With count: go to Nth
+		window, like with CTRL-W w.
 
 CTRL-W t					*CTRL-W_t* *CTRL-W_CTRL-T*
 CTRL-W CTRL-T	Move cursor to top-left window.
@@ -460,6 +482,10 @@ These commands can also be executed with ":wincmd":
 		The count can also be a window number.  Example: >
 			:exe nr .. "wincmd w"
 <		This goes to window "nr".
+
+Note: All CTRL-W commands can also be executed with |:wincmd|, for those
+places where a Normal mode command can't be used or is inconvenient (e.g.
+in a browser-based terminal).
 
 ==============================================================================
 5. Moving windows around				*window-moving*
@@ -495,35 +521,33 @@ horizontally split windows.  CTRL-W H does it the other way around.
 
 						*CTRL-W_K*
 CTRL-W K	Move the current window to be at the very top, using the full
-		width of the screen.  This works like closing the current
-		window and then creating another one with ":topleft split",
-		except that the current window contents is used for the new
-		window.
+		width of the screen.  This works like `:topleft split`, except
+		it is applied to the current window and no new window is
+		created.
 
 						*CTRL-W_J*
 CTRL-W J	Move the current window to be at the very bottom, using the
-		full width of the screen.  This works like closing the current
-		window and then creating another one with ":botright split",
-		except that the current window contents is used for the new
-		window.
+		full width of the screen.  This works like `:botright split`,
+		except it is applied to the current window and no new window
+		is created.
 
 						*CTRL-W_H*
 CTRL-W H	Move the current window to be at the far left, using the
-		full height of the screen.  This works like closing the
-		current window and then creating another one with
-		`:vert topleft split`, except that the current window contents
-		is used for the new window.
+		full height of the screen.  This works like
+		`:vert topleft split`, except it is applied to the current
+		window and no new window is created.
 
 						*CTRL-W_L*
 CTRL-W L	Move the current window to be at the far right, using the full
-		height of the screen.  This works like closing the
-		current window and then creating another one with
-		`:vert botright split`, except that the current window
-		contents is used for the new window.
+		height of the screen.  This works like `:vert botright split`,
+		except it is applied to the current window and no new window
+		is created.
 
 						*CTRL-W_T*
 CTRL-W T	Move the current window to a new tab page.  This fails if
 		there is only one window in the current tab page.
+		This works like `:tab split`, except the previous window is
+		closed.
 		When a count is specified the new tab page will be opened
 		before the tab page with this index.  Otherwise it comes after
 		the current tab page.
@@ -537,9 +561,9 @@ CTRL-W =	Make all windows (almost) equally high and wide, but use
 		Windows with 'winfixheight' set keep their height and windows
 		with 'winfixwidth' set keep their width.
 		To equalize only vertically (make window equally high) use
-		`vertical wincmd =`
+		`vertical wincmd =` .
 		To equalize only horizontally (make window equally wide) use
-		`horizontal wincmd =`
+		`horizontal wincmd =` .
 
 :res[ize] -N					*:res* *:resize* *CTRL-W_-*
 CTRL-W -	Decrease current window height by N (default 1).
@@ -607,6 +631,53 @@ it).
 The minimal height and width of a window is set with 'winminheight' and
 'winminwidth'.  These are hard values, a window will never become smaller.
 
+
+WinScrolled and WinResized autocommands ~
+						*win-scrolled-resized*
+If you want to get notified of changes in window sizes, the |WinResized|
+autocommand event can be used.
+If you want to get notified of text in windows scrolling vertically or
+horizontally, the |WinScrolled| autocommand event can be used.  This will also
+trigger in window size changes.
+Exception: the events will not be triggered when the text scrolls for
+'incsearch'.
+							*WinResized-event*
+The |WinResized| event is triggered after updating the display, several
+windows may have changed size then.  A list of the IDs of windows that changed
+since last time is provided in the v:event.windows variable, for example:
+	[1003, 1006]
+							*WinScrolled-event*
+The |WinScrolled| event is triggered after |WinResized|, and also if a window
+was scrolled.  That can be vertically (the text at the top of the window
+changed) or horizontally (when 'wrap' is off or when the first displayed part
+of the first line changes).  Note that |WinScrolled| will trigger many more
+times than |WinResized|, it may slow down editing a bit.
+
+The information provided by |WinScrolled| is a dictionary for each window that
+has changes, using the window ID as the key, and a total count of the changes
+with the key "all".  Example value for |v:event|: >
+	{
+	   all: {width: 0, height: 2, leftcol: 0, skipcol: 0, topline: 1, topfill: 0},
+	   1003: {width: 0, height: -1, leftcol: 0, skipcol: 0, topline: 0, topfill: 0},
+	   1006: {width: 0, height: 1, leftcol: 0, skipcol: 0, topline: 1, topfill: 0},
+	}
+
+Note that the "all" entry has the absolute values of the individual windows
+accumulated.
+
+If you need more information about what changed, or you want to "debounce" the
+events (not handle every event to avoid doing too much work), you may want to
+use the `winlayout()` and `getwininfo()` functions.
+
+|WinScrolled| and |WinResized| do not trigger when the first autocommand is
+added, only after the first scroll or resize.  They may trigger when switching
+to another tab page.
+
+The commands executed are expected to not cause window size or scroll changes.
+If this happens anyway, the event will trigger again very soon.  In other
+words: Just before triggering the event, the current sizes and scroll
+positions are stored and used to decide whether there was a change.
+
 ==============================================================================
 7. Argument and buffer list commands			*buffer-list*
 
@@ -646,8 +717,8 @@ Note: ":next" is an exception, because it must accept a list of file names
 for compatibility with Vi.
 
 
+------------------------------------------------------------------------------
 The argument list and multiple windows
---------------------------------------
 
 The current position in the argument list can be different for each window.
 Remember that when doing ":e file", the position in the argument list stays
@@ -735,9 +806,9 @@ can also get to them with the buffer list commands, like ":bnext".
 8. Do a command in all buffers or windows			*list-repeat*
 
 							*:windo*
-:[range]windo {cmd}	Execute {cmd} in each window or if [range] is given
-			only in windows for which the window number lies in
-			the [range]. It works like doing this: >
+:[range]windo {cmd}	Execute {cmd} in each |focusable| window, or only for
+			windows in a given [range] of window numbers. It works
+			like doing this: >
 				CTRL-W t
 				:{cmd}
 				CTRL-W w
@@ -870,8 +941,8 @@ set in the preview window to be able to recognize it.  The 'winfixheight'
 option is set to have it keep the same height when opening/closing other
 windows.
 
-						*:pta* *:ptag*
-:pta[g][!] [tagname]
+						*:pt* *:ptag*
+:pt[ag][!] [tagname]
 		Does ":tag[!] [tagname]" and shows the found tag in a
 		"Preview" window without changing the current buffer or cursor
 		position.  If a "Preview" window already exists, it is re-used
@@ -907,6 +978,14 @@ CTRL-W g }						*CTRL-W_g}*
 		it.  Make the new Preview window (if required) N high.  If N is
 		not given, 'previewheight' is used.
 
+							*:pb* *:pbuffer*
+:[N]pb[uffer][!] [+cmd] [N]
+		Edit buffer [N] from the buffer list in the preview window.
+		If [N] is not given, the current buffer remains being edited.
+		See |:buffer-!| for [!].  This will also edit a buffer that is
+		not in the buffer list, without setting the 'buflisted' flag.
+		Also see |+cmd|.
+
 							*:ped* *:pedit*
 :ped[it][!] [++opt] [+cmd] {file}
 		Edit {file} in the preview window.  The preview window is
@@ -914,6 +993,8 @@ CTRL-W g }						*CTRL-W_g}*
 		position isn't changed.  Useful example: >
 			:pedit +/fputc /usr/include/stdio.h
 <
+		Also see |++opt| and |+cmd|.
+
 							*:ps* *:psearch*
 :[range]ps[earch][!] [count] [/]pattern[/]
 		Works like |:ijump| but shows the found match in the preview
@@ -1043,7 +1124,7 @@ list of buffers. |unlisted-buffer|
 		  a	an active buffer: it is loaded and visible
 		  h	a hidden buffer: It is loaded, but currently not
 			   displayed in a window |hidden-buffer|
-		   -	a buffer with 'modifiable' off
+		   `-`	a buffer with 'modifiable' off
 		   =	a readonly buffer
 		   R	a terminal buffer with a running job
 		   F	a terminal buffer with a finished job
@@ -1054,7 +1135,7 @@ list of buffers. |unlisted-buffer|
 		[flags] can be a combination of the following characters,
 		which restrict the buffers to be listed:
 			+	modified buffers
-			-	buffers with 'modifiable' off
+			`-`	buffers with 'modifiable' off
 			=	readonly buffers
 			a	active buffers
 			u	unlisted buffers (overrides the "!")
@@ -1123,11 +1204,12 @@ list of buffers. |unlisted-buffer|
 :bw[ipeout][!] N1 N2 ...
 		Like |:bdelete|, but really delete the buffer.  Everything
 		related to the buffer is lost.  All marks in this buffer
-		become invalid, option settings are lost, etc.  Don't use this
+		become invalid, option settings are lost, the jumplist and
+		tagstack data will be purged, etc.  Don't use this
 		unless you know what you are doing. Examples: >
-                    :.+,$bwipeout   " wipe out all buffers after the current
-                                    " one
-                    :%bwipeout      " wipe out all buffers
+		    :.+,$bwipeout   " wipe out all buffers after the current
+				    " one
+		    :%bwipeout	    " wipe out all buffers
 <
 :[N]bun[load][!]				*:bun* *:bunload* *E515*
 :bun[load][!] [N]
@@ -1190,7 +1272,7 @@ list of buffers. |unlisted-buffer|
 			:w foobar | sp #
 <		Also see |+cmd|.
 
-:[N]bn[ext][!] [+cmd] [N]				*:bn* *:bnext* *E87*
+:[N]bn[ext][!] [+cmd] [N]				*:bn* *:bnext* *[b* *E87*
 		Go to [N]th next buffer in buffer list.  [N] defaults to one.
 		Wraps around the end of the buffer list.
 		See |:buffer-!| for [!].
@@ -1208,7 +1290,7 @@ list of buffers. |unlisted-buffer|
 		Wraps around the end of the buffer list.  Uses 'switchbuf'
 		Also see |+cmd|.
 
-:[N]bN[ext][!] [+cmd] [N]		*:bN* *:bNext* *:bp* *:bprevious* *E88*
+:[N]bN[ext][!] [+cmd] [N]		*:bN* *:bNext* *:bp* *:bprevious* *]b* *E88*
 :[N]bp[revious][!] [+cmd] [N]
 		Go to [N]th previous buffer in buffer list.  [N] defaults to
 		one.  Wraps around the start of the buffer list.
@@ -1222,7 +1304,7 @@ list of buffers. |unlisted-buffer|
 		Uses 'switchbuf'.
 		Also see |+cmd|.
 
-:br[ewind][!] [+cmd]					*:br* *:bre* *:brewind*
+:br[ewind][!] [+cmd]					*:br* *:bre* *:brewind* *[B*
 		Go to first buffer in buffer list.  If the buffer list is
 		empty, go to the first unlisted buffer.
 		See |:buffer-!| for [!].
@@ -1240,7 +1322,7 @@ list of buffers. |unlisted-buffer|
 :sbf[irst] [+cmd]					*:sbf* *:sbfirst*
 		Same as ":sbrewind".
 
-:bl[ast][!] [+cmd]					*:bl* *:blast*
+:bl[ast][!] [+cmd]					*:bl* *:blast* *]B*
 		Go to last buffer in buffer list.  If the buffer list is
 		empty, go to the last unlisted buffer.
 		See |:buffer-!| for [!].

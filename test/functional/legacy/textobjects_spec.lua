@@ -1,9 +1,10 @@
-local helpers = require('test.functional.helpers')(after_each)
-local call = helpers.call
-local clear = helpers.clear
-local command = helpers.command
-local expect = helpers.expect
-local source = helpers.source
+local n = require('test.functional.testnvim')()
+
+local call = n.call
+local clear = n.clear
+local command = n.command
+local expect = n.expect
+local source = n.source
 
 describe('Text object', function()
   before_each(function()

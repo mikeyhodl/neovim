@@ -1,10 +1,11 @@
 -- Test for autocommand that deletes the current buffer on BufLeave event.
 -- Also test deleting the last buffer, should give a new, empty buffer.
 
-local helpers = require('test.functional.helpers')(after_each)
-local clear, feed, insert = helpers.clear, helpers.feed, helpers.insert
-local command, expect = helpers.command, helpers.expect
-local poke_eventloop = helpers.poke_eventloop
+local n = require('test.functional.testnvim')()
+
+local clear, feed, insert = n.clear, n.feed, n.insert
+local command, expect = n.command, n.expect
+local poke_eventloop = n.poke_eventloop
 
 describe('test5', function()
   setup(clear)
