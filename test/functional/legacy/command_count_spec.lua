@@ -1,8 +1,9 @@
 -- Test for user command counts
 
-local helpers = require('test.functional.helpers')(after_each)
-local clear, source, expect = helpers.clear, helpers.source, helpers.expect
-local feed_command = helpers.feed_command
+local n = require('test.functional.testnvim')()
+
+local clear, source, expect = n.clear, n.source, n.expect
+local feed_command = n.feed_command
 
 -- luacheck: ignore 613 (Trailing whitespace in a string)
 describe('command_count', function()

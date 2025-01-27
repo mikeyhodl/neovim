@@ -1,11 +1,14 @@
-#ifndef NVIM_MEMLINE_H
-#define NVIM_MEMLINE_H
+#pragma once
 
-#include "nvim/buffer_defs.h"  // for buf_T
-#include "nvim/pos.h"  // for pos_T, linenr_T, colnr_T
-#include "nvim/types.h"
+#include "nvim/ascii_defs.h"
+#include "nvim/eval/typval_defs.h"  // IWYU pragma: keep
+#include "nvim/memline_defs.h"  // IWYU pragma: keep
+#include "nvim/pos_defs.h"  // IWYU pragma: keep
+#include "nvim/types_defs.h"  // IWYU pragma: keep
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "memline.h.generated.h"
 #endif
-#endif  // NVIM_MEMLINE_H
+
+/// LINEEMPTY() - return true if the line is empty
+#define LINEEMPTY(p) (*ml_get(p) == NUL)

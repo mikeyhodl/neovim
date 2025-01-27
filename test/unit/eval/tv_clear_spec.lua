@@ -1,18 +1,18 @@
-local helpers = require('test.unit.helpers')(after_each)
-local itp = helpers.gen_itp(it)
-local eval_helpers = require('test.unit.eval.helpers')
+local t = require('test.unit.testutil')
+local itp = t.gen_itp(it)
+local t_eval = require('test.unit.eval.testutil')
 
-local alloc_log_new = helpers.alloc_log_new
-local cimport = helpers.cimport
-local ffi = helpers.ffi
-local eq = helpers.eq
+local alloc_log_new = t.alloc_log_new
+local cimport = t.cimport
+local ffi = t.ffi
+local eq = t.eq
 
-local a = eval_helpers.alloc_logging_helpers
-local type_key = eval_helpers.type_key
-local list_type = eval_helpers.list_type
-local list_items = eval_helpers.list_items
-local dict_items = eval_helpers.dict_items
-local lua2typvalt = eval_helpers.lua2typvalt
+local a = t_eval.alloc_logging_t
+local type_key = t_eval.type_key
+local list_type = t_eval.list_type
+local list_items = t_eval.list_items
+local dict_items = t_eval.dict_items
+local lua2typvalt = t_eval.lua2typvalt
 
 local lib = cimport('./src/nvim/eval/typval.h', './src/nvim/eval.h')
 
@@ -28,8 +28,8 @@ end)
 
 describe('tv_clear()', function()
   itp('successfully frees all lists in [&l [1], *l, *l]', function()
-    local l_inner = {1}
-    local list = {l_inner, l_inner, l_inner}
+    local l_inner = { 1 }
+    local list = { l_inner, l_inner, l_inner }
     local list_tv = ffi.gc(lua2typvalt(list), nil)
     local list_p = list_tv.vval.v_list
     local lis = list_items(list_p)
@@ -55,8 +55,8 @@ describe('tv_clear()', function()
     })
   end)
   itp('successfully frees all lists in [&l [], *l, *l]', function()
-    local l_inner = {[type_key]=list_type}
-    local list = {l_inner, l_inner, l_inner}
+    local l_inner = { [type_key] = list_type }
+    local list = { l_inner, l_inner, l_inner }
     local list_tv = ffi.gc(lua2typvalt(list), nil)
     local list_p = list_tv.vval.v_list
     local lis = list_items(list_p)
@@ -80,7 +80,7 @@ describe('tv_clear()', function()
   end)
   itp('successfully frees all dictionaries in [&d {}, *d]', function()
     local d_inner = {}
-    local list = {d_inner, d_inner}
+    local list = { d_inner, d_inner }
     local list_tv = ffi.gc(lua2typvalt(list), nil)
     local list_p = list_tv.vval.v_list
     local lis = list_items(list_p)
@@ -101,8 +101,8 @@ describe('tv_clear()', function()
     })
   end)
   itp('successfully frees all dictionaries in [&d {a: 1}, *d]', function()
-    local d_inner = {a=1}
-    local list = {d_inner, d_inner}
+    local d_inner = { a = 1 }
+    local list = { d_inner, d_inner }
     local list_tv = ffi.gc(lua2typvalt(list), nil)
     local list_p = list_tv.vval.v_list
     local lis = list_items(list_p)

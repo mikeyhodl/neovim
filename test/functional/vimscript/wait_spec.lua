@@ -1,20 +1,22 @@
-local helpers = require('test.functional.helpers')(after_each)
-local call = helpers.call
-local clear = helpers.clear
-local command = helpers.command
-local eval = helpers.eval
-local eq = helpers.eq
-local feed = helpers.feed
-local feed_command = helpers.feed_command
-local next_msg = helpers.next_msg
-local nvim = helpers.nvim
-local source = helpers.source
-local pcall_err = helpers.pcall_err
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local call = n.call
+local clear = n.clear
+local command = n.command
+local eval = n.eval
+local eq = t.eq
+local feed = n.feed
+local feed_command = n.feed_command
+local next_msg = n.next_msg
+local api = n.api
+local source = n.source
+local pcall_err = t.pcall_err
 
 before_each(function()
   clear()
-  local channel = nvim('get_api_info')[1]
-  nvim('set_var', 'channel', channel)
+  local channel = api.nvim_get_chan_info(0).id
+  api.nvim_set_var('channel', channel)
 end)
 
 describe('wait()', function()
@@ -36,11 +38,12 @@ describe('wait()', function()
   end)
 
   it('returns -2 when interrupted', function()
-    feed_command('call rpcnotify(g:channel, "ready") | '..
-                 'call rpcnotify(g:channel, "wait", wait(-1, 0))')
-    eq({'notification', 'ready', {}}, next_msg())
+    feed_command(
+      'call rpcnotify(g:channel, "ready") | ' .. 'call rpcnotify(g:channel, "wait", wait(-1, 0))'
+    )
+    eq({ 'notification', 'ready', {} }, next_msg())
     feed('<c-c>')
-    eq({'notification', 'wait', {-2}}, next_msg())
+    eq({ 'notification', 'wait', { -2 } }, next_msg())
   end)
 
   it('returns -3 on error', function()
@@ -59,14 +62,14 @@ describe('wait()', function()
     ]])
 
     -- XXX: flaky (#11137)
-    helpers.retry(nil, nil, function()
-      nvim('set_var', 'counter', 0)
+    t.retry(nil, nil, function()
+      api.nvim_set_var('counter', 0)
       eq(-1, call('wait', 20, 'Count() >= 5', 99999))
     end)
 
-    nvim('set_var', 'counter', 0)
+    api.nvim_set_var('counter', 0)
     eq(0, call('wait', 10000, 'Count() >= 5', 5))
-    eq(5, nvim('get_var', 'counter'))
+    eq(5, api.nvim_get_var('counter'))
   end)
 
   it('validates args', function()

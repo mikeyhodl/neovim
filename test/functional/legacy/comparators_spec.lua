@@ -1,8 +1,10 @@
 -- " Test for expression comparators.
 
-local helpers = require('test.functional.helpers')(after_each)
-local clear, eq = helpers.clear, helpers.eq
-local eval, command = helpers.eval, helpers.command
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear, eq = n.clear, t.eq
+local eval, command = n.eval, n.command
 
 describe('comparators', function()
   before_each(clear)

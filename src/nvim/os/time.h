@@ -1,13 +1,10 @@
-#ifndef NVIM_OS_TIME_H
-#define NVIM_OS_TIME_H
+#pragma once
 
-#include <stdbool.h>
-#include <stdint.h>
-#include <time.h>
+#include <stddef.h>  // IWYU pragma: keep
+#include <time.h>  // IWYU pragma: keep
 
-typedef uint64_t Timestamp;
+#include "nvim/os/time_defs.h"  // IWYU pragma: keep
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "os/time.h.generated.h"
 #endif
-#endif  // NVIM_OS_TIME_H

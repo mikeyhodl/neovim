@@ -10,86 +10,45 @@
     {
       "name": "default",
       "displayName": "RelWithDebInfo",
-      "description": "Enables optimizations (-Og or -O2) with debug information",
+      "description": "Enables optimizations with debug information",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo"
       },
-      "inherits": [
-        "base"
-      ]
+      "inherits": ["base"]
     },
     {
       "name": "debug",
       "displayName": "Debug",
-      "description": "Disables optimizations (-O0), enables debug information",
+      "description": "No optimizations, enables debug information",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       },
-      "inherits": [
-        "base"
-      ]
+      "inherits": ["base"]
     },
     {
       "name": "release",
       "displayName": "Release",
-      "description": "Same as RelWithDebInfo, but disables debug information",
+      "description": "Optimized for performance, disables debug information",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       },
-      "inherits": [
-        "base"
-      ]
+      "inherits": ["base"]
     },
     {
-      "name": "windows-default",
-      "displayName": "Windows x64 RelWithDebInfo",
-      "description": "Sets Ninja generator, enables optimizations with debug information for x64",
-      "generator": "Ninja",
+      "name": "iwyu",
+      "displayName": "IWYU",
+      "description": "Run include-what-you-use",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+        "ENABLE_IWYU": "ON"
       },
-      "architecture": {
-        "value": "x64",
-        "strategy": "external"
-      },
-      "vendor": {
-        "microsoft.com/VisualStudioSettings/CMake/1.0": {
-          "hostOS": [
-            "Windows"
-          ]
-        }
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
-      },
-      "inherits": [
-        "base"
-      ]
-    }
-  ],
-  "buildPresets": [
-    {
-      "name": "default",
-      "configurePreset": "default"
+      "inherits": ["base"]
     },
     {
-      "name": "debug",
-      "configurePreset": "debug"
-    },
-    {
-      "name": "release",
-      "configurePreset": "release"
-    },
-    {
-      "name": "windows-default",
-      "configurePreset": "windows-default",
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
-      }
+      "name": "ci",
+      "cacheVariables": {
+        "CI_BUILD": "ON"
+      },
+      "inherits": ["base"]
     }
   ]
 }

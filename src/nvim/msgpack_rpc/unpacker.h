@@ -1,16 +1,19 @@
-#ifndef NVIM_MSGPACK_RPC_UNPACKER_H
-#define NVIM_MSGPACK_RPC_UNPACKER_H
+#pragma once
 
 #include <inttypes.h>
 #include <stdbool.h>
 #include <string.h>
 
+#include "klib/kvec.h"
 #include "mpack/mpack_core.h"
 #include "mpack/object.h"
+#include "nvim/api/private/defs.h"
 #include "nvim/api/private/dispatch.h"
-#include "nvim/api/private/helpers.h"
-#include "nvim/memory.h"
-#include "nvim/msgpack_rpc/channel_defs.h"
+#include "nvim/grid_defs.h"
+#include "nvim/memory_defs.h"
+#include "nvim/msgpack_rpc/channel_defs.h"  // IWYU pragma: keep
+#include "nvim/types_defs.h"
+#include "nvim/ui_defs.h"
 
 struct Unpacker {
   mpack_parser_t parser;
@@ -36,8 +39,11 @@ struct Unpacker {
   int nevents;
   int ncalls;
   UIClientHandler ui_handler;
-  GridLineEvent *grid_line_event;
+  GridLineEvent grid_line_event;
+  bool has_grid_line_event;
 };
+
+typedef kvec_t(char) AdditionalDataBuilder;
 
 // unrecovareble error. unpack_error should be set!
 #define unpacker_closed(p) ((p)->state < 0)
@@ -45,5 +51,3 @@ struct Unpacker {
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "msgpack_rpc/unpacker.h.generated.h"
 #endif
-
-#endif  // NVIM_MSGPACK_RPC_UNPACKER_H

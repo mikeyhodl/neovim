@@ -1,12 +1,14 @@
 -- Test for BufWritePre autocommand that deletes or unloads the buffer.
 -- Test for BufUnload autocommand that unloads all other buffers.
 
-local helpers = require('test.functional.helpers')(after_each)
-local source = helpers.source
-local clear, command, expect, eq, eval = helpers.clear, helpers.command, helpers.expect, helpers.eq, helpers.eval
-local write_file, dedent = helpers.write_file, helpers.dedent
-local read_file = helpers.read_file
-local expect_exit = helpers.expect_exit
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local source = n.source
+local clear, command, expect, eq, eval = n.clear, n.command, n.expect, t.eq, n.eval
+local write_file, dedent = t.write_file, t.dedent
+local read_file = t.read_file
+local expect_exit = n.expect_exit
 
 describe('autocommands that delete and unload buffers:', function()
   local test_file = 'Xtest-008_autocommands.out'
@@ -16,8 +18,8 @@ describe('autocommands that delete and unload buffers:', function()
     end of Xxx]])
   local text2 = text1:gsub('1', '2')
   setup(function()
-    write_file('Xxx1', text1..'\n')
-    write_file('Xxx2', text2..'\n')
+    write_file('Xxx1', text1 .. '\n')
+    write_file('Xxx2', text2 .. '\n')
   end)
   teardown(function()
     os.remove(test_file)
@@ -36,8 +38,7 @@ describe('autocommands that delete and unload buffers:', function()
     -- The legacy test file did not check the error message.
     command('let v:errmsg = "no error"')
     command('silent! write')
-    eq('E203: Autocommands deleted or unloaded buffer to be written',
-      eval('v:errmsg'))
+    eq('E203: Autocommands deleted or unloaded buffer to be written', eval('v:errmsg'))
     eq('Xxx2', eval('bufname("%")'))
     expect(text2)
     -- Start editing Xxx2.
@@ -46,8 +47,7 @@ describe('autocommands that delete and unload buffers:', function()
     command('let v:errmsg = "no error"')
     -- Write Xxx2, will delete the buffer and give an error msg.
     command('silent! write')
-    eq('E203: Autocommands deleted or unloaded buffer to be written',
-      eval('v:errmsg'))
+    eq('E203: Autocommands deleted or unloaded buffer to be written', eval('v:errmsg'))
     eq('Xxx1', eval('bufname("%")'))
     expect(text1)
   end)
@@ -63,7 +63,7 @@ describe('autocommands that delete and unload buffers:', function()
 	endwhile
       endfunc
       func WriteToOut()
-	edit! ]]..test_file..[[
+	edit! ]] .. test_file .. [[
 
 	$put ='VimLeave done'
 	write
@@ -80,7 +80,6 @@ describe('autocommands that delete and unload buffers:', function()
     command('silent! edit Makefile') -- an existing file
     command('silent! split new2')
     expect_exit(command, 'silent! quit')
-    eq('VimLeave done',
-       string.match(read_file(test_file), "^%s*(.-)%s*$"))
+    eq('VimLeave done', string.match(read_file(test_file), '^%s*(.-)%s*$'))
   end)
 end)

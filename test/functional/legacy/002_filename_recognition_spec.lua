@@ -1,9 +1,10 @@
 -- Test if URLs are recognized as filenames by commands such as "gf". Here
 -- we'll use `expand("<cfile>")` since "gf" would need to open the file.
 
-local helpers = require('test.functional.helpers')(after_each)
-local clear, feed, insert = helpers.clear, helpers.feed, helpers.insert
-local feed_command, expect = helpers.feed_command, helpers.expect
+local n = require('test.functional.testnvim')()
+
+local clear, feed, insert = n.clear, n.feed, n.insert
+local feed_command, expect = n.feed_command, n.expect
 
 describe('filename recognition', function()
   setup(clear)

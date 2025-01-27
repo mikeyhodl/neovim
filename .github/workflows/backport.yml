@@ -1,4 +1,4 @@
-name: Backport
+name: backport
 on:
   pull_request_target:
     types: [closed, labeled]
@@ -8,20 +8,39 @@ jobs:
       contents: write
       pull-requests: write
     name: Backport Pull Request
-    if: >
-      github.repository_owner == 'neovim' && (
-        github.event_name == 'pull_request_target' &&
-        github.event.pull_request.merged
-      )
+    if: github.event.pull_request.merged
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+
+      - uses: actions/create-github-app-token@v1
+        id: app-token
         with:
-          # required to find all branches
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
-      - name: Create backport PRs
-        uses: zeebe-io/backport-action@v0
+          app-id: ${{ vars.BACKPORT_APP }}
+          private-key: ${{ secrets.BACKPORT_KEY }}
+
+      - name: Create backport PR
+        id: backport
+        uses: korthout/backport-action@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          github_workspace: ${{ github.workspace }}
+          pull_title: "${pull_title}"
+          label_pattern: "^ci:backport ([^ ]+)$"
+          github_token: ${{ steps.app-token.outputs.token }}
+
+      - name: Create failed backport label
+        if: ${{ steps.backport.outputs.was_successful == 'false' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['needs:backport']
+            })
+
+      - name: Enable automerge
+        if: ${{ steps.backport.outputs.was_successful == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge --rebase --auto ${{ steps.backport.outputs.created_pull_numbers }}

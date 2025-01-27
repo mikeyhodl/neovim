@@ -1,15 +1,16 @@
 -- Test changelist position after splitting window
 -- Set 'undolevels' to make changelist for sourced file
 
-local helpers = require('test.functional.helpers')(after_each)
-local clear, feed, insert = helpers.clear, helpers.feed, helpers.insert
-local feed_command, expect = helpers.feed_command, helpers.expect
+local n = require('test.functional.testnvim')()
+
+local clear, feed, insert = n.clear, n.feed, n.insert
+local feed_command, expect = n.feed_command, n.expect
 
 describe('changelist', function()
   setup(clear)
 
   it('is working', function()
-    insert("1\n2")
+    insert('1\n2')
 
     feed('Gkylp')
     feed_command('set ul=100')

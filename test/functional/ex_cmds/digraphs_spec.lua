@@ -1,8 +1,9 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear = helpers.clear
-local command = helpers.command
-local feed = helpers.feed
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
+
+local clear = n.clear
+local command = n.command
+local feed = n.feed
 
 describe(':digraphs', function()
   local screen
@@ -10,15 +11,14 @@ describe(':digraphs', function()
     clear()
     screen = Screen.new(65, 8)
     screen:set_default_attr_ids({
-      [1] = {bold = true, foreground = Screen.colors.Blue1},
-      [2] = {foreground = Screen.colors.Grey100, background = Screen.colors.Red},
-      [3] = {bold = true, foreground = Screen.colors.SeaGreen4},
-      [4] = {bold = true},
-      [5] = {background = Screen.colors.LightGrey},
-      [6] = {foreground = Screen.colors.Blue1},
-      [7] = {bold = true, reverse = true},
+      [1] = { bold = true, foreground = Screen.colors.Blue1 },
+      [2] = { foreground = Screen.colors.Grey100, background = Screen.colors.Red },
+      [3] = { bold = true, foreground = Screen.colors.SeaGreen4 },
+      [4] = { bold = true },
+      [5] = { background = Screen.colors.LightGrey },
+      [6] = { foreground = Screen.colors.Blue1 },
+      [7] = { bold = true, reverse = true },
     })
-    screen:attach()
   end)
 
   it('displays digraphs', function()

@@ -1,13 +1,10 @@
-#ifndef NVIM_SIGN_H
-#define NVIM_SIGN_H
+#pragma once
 
-#include <stdbool.h>
-
-#include "nvim/buffer_defs.h"
-#include "nvim/ex_cmds_defs.h"
-#include "nvim/sign_defs.h"
+#include "nvim/cmdexpand_defs.h"  // IWYU pragma: keep
+#include "nvim/ex_cmds_defs.h"  // IWYU pragma: keep
+#include "nvim/sign_defs.h"  // IWYU pragma: keep
+#include "nvim/types_defs.h"  // IWYU pragma: keep
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "sign.h.generated.h"
 #endif
-#endif  // NVIM_SIGN_H

@@ -1,19 +1,24 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear = helpers.clear
-local eq = helpers.eq
-local eval = helpers.eval
-local exc_exec = helpers.exc_exec
-local expect = helpers.expect
-local insert = helpers.insert
-local source = helpers.source
-local write_file = helpers.write_file
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear = n.clear
+local eq = t.eq
+local eval = n.eval
+local exc_exec = n.exc_exec
+local expect = n.expect
+local insert = n.insert
+local source = n.source
+local write_file = t.write_file
 
 describe("'tagcase' option", function()
   setup(function()
-    write_file('Xtags', [[
+    write_file(
+      'Xtags',
+      [[
       Bar	Xtext	3
       Foo	Xtext	2
-      foo	Xtext	4]])
+      foo	Xtext	4]]
+    )
   end)
 
   before_each(function()

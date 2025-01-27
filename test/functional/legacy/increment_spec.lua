@@ -1,12 +1,13 @@
 -- Tests for using Ctrl-A/Ctrl-X on visual selections
 
-local helpers = require('test.functional.helpers')(after_each)
-local source, command = helpers.source, helpers.command
-local call, clear = helpers.call, helpers.clear
-local eq, nvim = helpers.eq, helpers.meths
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local source, command = n.source, n.command
+local call, clear = n.call, n.clear
+local eq, api = t.eq, n.api
 
 describe('Ctrl-A/Ctrl-X on visual selections', function()
-
   before_each(function()
     clear()
     source([=[
@@ -744,18 +745,18 @@ describe('Ctrl-A/Ctrl-X on visual selections', function()
     it('works on Test ' .. id, function()
       command('set nrformats&vi') -- &vi makes Vim compatible
       call('Test_visual_increment_' .. id)
-      eq({}, nvim.get_vvar('errors'))
+      eq({}, api.nvim_get_vvar('errors'))
     end)
   end
 
   it('does not drop leading zeroes', function()
     command('set nrformats&vi') -- &vi makes Vim compatible
     call('Test_normal_increment_01')
-    eq({}, nvim.get_vvar('errors'))
+    eq({}, api.nvim_get_vvar('errors'))
   end)
 
   it('maintains correct column after CTRL-A', function()
     call('Test_normal_increment_02')
-    eq({}, nvim.get_vvar('errors'))
+    eq({}, api.nvim_get_vvar('errors'))
   end)
 end)

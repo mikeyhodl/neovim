@@ -1,11 +1,18 @@
-#ifndef NVIM_OS_UNIX_DEFS_H
-#define NVIM_OS_UNIX_DEFS_H
+#pragma once
+// IWYU pragma: private, include "nvim/os/os_defs.h"
 
+// IWYU pragma: begin_exports
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <pthread.h>
 #include <sys/param.h>
+#include <sys/socket.h>
 #include <unistd.h>
-
-// POSIX.1-2008 says that NAME_MAX should be in here
-#include <limits.h>
+#if defined(HAVE_TERMIOS_H)
+# include <termios.h>
+#endif
+// IWYU pragma: end_exports
 
 #define TEMP_DIR_NAMES { "$TMPDIR", "/tmp", ".", "~" }
 #define TEMP_FILE_PATH_MAXLEN 256
@@ -18,5 +25,3 @@
 // Character that separates entries in $PATH.
 #define ENV_SEPCHAR ':'
 #define ENV_SEPSTR  ":"
-
-#endif  // NVIM_OS_UNIX_DEFS_H

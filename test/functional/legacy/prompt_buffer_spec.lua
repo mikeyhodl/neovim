@@ -1,12 +1,16 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local feed = helpers.feed
-local source = helpers.source
-local clear = helpers.clear
-local feed_command = helpers.feed_command
-local poke_eventloop = helpers.poke_eventloop
-local meths = helpers.meths
-local eq = helpers.eq
+
+local feed = n.feed
+local source = n.source
+local clear = n.clear
+local command = n.command
+local expect = n.expect
+local poke_eventloop = n.poke_eventloop
+local api = n.api
+local eq = t.eq
+local neq = t.neq
 
 describe('prompt buffer', function()
   local screen
@@ -14,226 +18,231 @@ describe('prompt buffer', function()
   before_each(function()
     clear()
     screen = Screen.new(25, 10)
-    screen:attach()
+    command('set laststatus=0 nohidden')
+  end)
+
+  local function source_script()
     source([[
       func TextEntered(text)
         if a:text == "exit"
+          " Reset &modified to allow the buffer to be closed.
           set nomodified
           stopinsert
           close
         else
+          " Add the output above the current prompt.
           call append(line("$") - 1, 'Command: "' . a:text . '"')
+          " Reset &modified to allow the buffer to be closed.
           set nomodified
           call timer_start(20, {id -> TimerFunc(a:text)})
         endif
       endfunc
 
       func TimerFunc(text)
+        " Add the output above the current prompt.
         call append(line("$") - 1, 'Result: "' . a:text .'"')
+        " Reset &modified to allow the buffer to be closed.
+        set nomodified
       endfunc
 
       func SwitchWindows()
         call timer_start(0, {-> execute("wincmd p", "")})
       endfunc
+
+      call setline(1, "other buffer")
+      set nomodified
+      new
+      set buftype=prompt
+      call prompt_setcallback(bufnr(''), function("TextEntered"))
+      eval bufnr("")->prompt_setprompt("cmd: ")
+      startinsert
     ]])
-    feed_command("set noshowmode | set laststatus=0")
-    feed_command("call setline(1, 'other buffer')")
-    feed_command("new")
-    feed_command("set buftype=prompt")
-    feed_command("call prompt_setcallback(bufnr(''), function('TextEntered'))")
-    feed_command("eval bufnr('')->prompt_setprompt('cmd: ')")
-  end)
-
-  after_each(function()
-    screen:detach()
-  end)
-
-  it('works', function()
     screen:expect([[
-      ^                         |
-      ~                        |
-      ~                        |
-      ~                        |
-      [Prompt]                 |
+      cmd: ^                    |
+      {1:~                        }|*3
+      {3:[Prompt] [+]             }|
       other buffer             |
-      ~                        |
-      ~                        |
-      ~                        |
-                               |
+      {1:~                        }|*3
+      {5:-- INSERT --}             |
     ]])
-    feed("i")
-    feed("hello\n")
+  end
+
+  -- oldtest: Test_prompt_basic()
+  it('works', function()
+    source_script()
+    feed('hello\n')
     screen:expect([[
       cmd: hello               |
       Command: "hello"         |
       Result: "hello"          |
       cmd: ^                    |
-      [Prompt] [+]             |
+      {3:[Prompt]                 }|
       other buffer             |
-      ~                        |
-      ~                        |
-      ~                        |
-                               |
+      {1:~                        }|*3
+      {5:-- INSERT --}             |
     ]])
-    feed("exit\n")
+    feed('exit\n')
     screen:expect([[
       ^other buffer             |
-      ~                        |
-      ~                        |
-      ~                        |
-      ~                        |
-      ~                        |
-      ~                        |
-      ~                        |
-      ~                        |
+      {1:~                        }|*8
                                |
     ]])
   end)
 
+  -- oldtest: Test_prompt_editing()
   it('editing', function()
-    screen:expect([[
-      ^                         |
-      ~                        |
-      ~                        |
-      ~                        |
-      [Prompt]                 |
-      other buffer             |
-      ~                        |
-      ~                        |
-      ~                        |
-                               |
-    ]])
-    feed("i")
-    feed("hello<BS><BS>")
+    source_script()
+    feed('hello<BS><BS>')
     screen:expect([[
       cmd: hel^                 |
-      ~                        |
-      ~                        |
-      ~                        |
-      [Prompt] [+]             |
+      {1:~                        }|*3
+      {3:[Prompt] [+]             }|
       other buffer             |
-      ~                        |
-      ~                        |
-      ~                        |
-                               |
+      {1:~                        }|*3
+      {5:-- INSERT --}             |
     ]])
-    feed("<Left><Left><Left><BS>-")
+    feed('<Left><Left><Left><BS>-')
     screen:expect([[
       cmd: -^hel                |
-      ~                        |
-      ~                        |
-      ~                        |
-      [Prompt] [+]             |
+      {1:~                        }|*3
+      {3:[Prompt] [+]             }|
       other buffer             |
-      ~                        |
-      ~                        |
-      ~                        |
-                               |
+      {1:~                        }|*3
+      {5:-- INSERT --}             |
     ]])
-    feed("<C-O>lz")
+    feed('<C-O>lz')
     screen:expect([[
       cmd: -hz^el               |
-      ~                        |
-      ~                        |
-      ~                        |
-      [Prompt] [+]             |
+      {1:~                        }|*3
+      {3:[Prompt] [+]             }|
       other buffer             |
-      ~                        |
-      ~                        |
-      ~                        |
-                               |
+      {1:~                        }|*3
+      {5:-- INSERT --}             |
     ]])
-    feed("<End>x")
+    feed('<End>x')
     screen:expect([[
       cmd: -hzelx^              |
-      ~                        |
-      ~                        |
-      ~                        |
-      [Prompt] [+]             |
+      {1:~                        }|*3
+      {3:[Prompt] [+]             }|
       other buffer             |
-      ~                        |
-      ~                        |
-      ~                        |
-                               |
+      {1:~                        }|*3
+      {5:-- INSERT --}             |
     ]])
-    feed("<C-U>exit\n")
+    feed('<C-U>exit\n')
     screen:expect([[
       ^other buffer             |
-      ~                        |
-      ~                        |
-      ~                        |
-      ~                        |
-      ~                        |
-      ~                        |
-      ~                        |
-      ~                        |
+      {1:~                        }|*8
                                |
     ]])
   end)
 
+  -- oldtest: Test_prompt_switch_windows()
   it('switch windows', function()
-    feed_command("set showmode")
-    feed("i")
+    source_script()
+    feed('<C-O>:call SwitchWindows()<CR>')
     screen:expect([[
-      cmd: ^                    |
-      ~                        |
-      ~                        |
-      ~                        |
-      [Prompt] [+]             |
-      other buffer             |
-      ~                        |
-      ~                        |
-      ~                        |
-      -- INSERT --             |
-    ]])
-    feed("<C-O>:call SwitchWindows()<CR>")
-    screen:expect{grid=[[
       cmd:                     |
-      ~                        |
-      ~                        |
-      ~                        |
-      [Prompt] [+]             |
+      {1:~                        }|*3
+      {2:[Prompt] [+]             }|
       ^other buffer             |
-      ~                        |
-      ~                        |
-      ~                        |
+      {1:~                        }|*3
                                |
-    ]]}
-    feed("<C-O>:call SwitchWindows()<CR>")
+    ]])
+    feed('<C-O>:call SwitchWindows()<CR>')
     screen:expect([[
       cmd: ^                    |
-      ~                        |
-      ~                        |
-      ~                        |
-      [Prompt] [+]             |
+      {1:~                        }|*3
+      {3:[Prompt] [+]             }|
       other buffer             |
-      ~                        |
-      ~                        |
-      ~                        |
-      -- INSERT --             |
+      {1:~                        }|*3
+      {5:-- INSERT --}             |
     ]])
-    feed("<Esc>")
+    feed('<Esc>')
     screen:expect([[
       cmd:^                     |
-      ~                        |
-      ~                        |
-      ~                        |
-      [Prompt] [+]             |
+      {1:~                        }|*3
+      {3:[Prompt] [+]             }|
       other buffer             |
-      ~                        |
-      ~                        |
-      ~                        |
+      {1:~                        }|*3
                                |
     ]])
   end)
 
+  -- oldtest: Test_prompt_while_writing_to_hidden_buffer()
   it('keeps insert mode after aucmd_restbuf in callback', function()
+    source_script()
     source [[
       let s:buf = nvim_create_buf(1, 1)
       call timer_start(0, {-> nvim_buf_set_lines(s:buf, -1, -1, 0, ['walrus'])})
-      startinsert
     ]]
     poke_eventloop()
-    eq({ mode = "i", blocking = false }, meths.get_mode())
+    eq({ mode = 'i', blocking = false }, api.nvim_get_mode())
+  end)
+
+  -- oldtest: Test_prompt_appending_while_hidden()
+  it('accessing hidden prompt buffer does not start insert mode', function()
+    local prev_win = api.nvim_get_current_win()
+    source([[
+      new prompt
+      set buftype=prompt
+      set bufhidden=hide
+
+      func s:TextEntered(text)
+          if a:text == 'exit'
+              close
+          endif
+          let g:entered = a:text
+      endfunc
+      call prompt_setcallback(bufnr(), function('s:TextEntered'))
+
+      func DoAppend()
+        call appendbufline('prompt', '$', 'Test')
+        return ''
+      endfunc
+    ]])
+    feed('asomething<CR>')
+    eq('something', api.nvim_get_var('entered'))
+    neq(prev_win, api.nvim_get_current_win())
+    feed('exit<CR>')
+    eq(prev_win, api.nvim_get_current_win())
+    eq({ mode = 'n', blocking = false }, api.nvim_get_mode())
+    command('call DoAppend()')
+    eq({ mode = 'n', blocking = false }, api.nvim_get_mode())
+    feed('i')
+    eq({ mode = 'i', blocking = false }, api.nvim_get_mode())
+    command('call DoAppend()')
+    eq({ mode = 'i', blocking = false }, api.nvim_get_mode())
+  end)
+
+  -- oldtest: Test_prompt_leave_modify_hidden()
+  it('modifying hidden buffer does not prevent prompt buffer mode change', function()
+    source([[
+      file hidden
+      set bufhidden=hide
+      enew
+      new prompt
+      set buftype=prompt
+
+      inoremap <buffer> w <Cmd>wincmd w<CR>
+      inoremap <buffer> q <Cmd>bwipe!<CR>
+      autocmd BufLeave prompt call appendbufline('hidden', '$', 'Leave')
+      autocmd BufEnter prompt call appendbufline('hidden', '$', 'Enter')
+      autocmd BufWinLeave prompt call appendbufline('hidden', '$', 'Close')
+    ]])
+    feed('a')
+    eq({ mode = 'i', blocking = false }, api.nvim_get_mode())
+    feed('w')
+    eq({ mode = 'n', blocking = false }, api.nvim_get_mode())
+    feed('<C-W>w')
+    eq({ mode = 'i', blocking = false }, api.nvim_get_mode())
+    feed('q')
+    eq({ mode = 'n', blocking = false }, api.nvim_get_mode())
+    command('bwipe!')
+    expect([[
+
+      Leave
+      Enter
+      Leave
+      Close]])
   end)
 end)

@@ -8,12 +8,11 @@ If you want to help but don't know where to start, here are some
 low-risk/isolated tasks:
 
 - Try a [complexity:low] issue.
-- Fix bugs found by [Clang](#clang-scan-build), [PVS](#pvs-studio) or
-  [Coverity](#coverity).
-- [Improve documentation](#documenting)
+- Fix bugs found by [Coverity](#coverity).
 - [Merge a Vim patch] (requires strong familiarity with Vim)
   - NOTE: read the above link before sending improvements to "runtime files" (anything in `runtime/`).
-    - Vimscript and documentation files are (mostly) maintained by [Vim](https://github.com/vim/vim), not Nvim.
+    - Vimscript and documentation files are (mostly) maintained by [Vim], not Nvim.
+    - Nvim's [filetype detection](https://github.com/neovim/neovim/blob/master/runtime/lua/vim/filetype.lua) behavior matches Vim, so changes to filetype detection should be submitted to [Vim] first.
     - Lua files are maintained by Nvim.
 
 Reporting problems
@@ -23,24 +22,30 @@ Reporting problems
 - [Search existing issues][github-issues] (including closed!)
 - Update Neovim to the latest version to see if your problem persists.
 - Try to reproduce with `nvim --clean` ("factory defaults").
+- If a specific configuration or plugin is necessary to recreate the problem, use the minimal template in `contrib/minimal.lua` with `nvim --clean -u contrib/minimal.lua` after making the necessary changes.
 - [Bisect](https://neovim.io/doc/user/starting.html#bisect) your config: disable plugins incrementally, to narrow down the cause of the issue.
 - [Bisect][git-bisect] Neovim's source code to find the cause of a regression, if you can. This is _extremely_ helpful.
-- When reporting a crash, [include a stacktrace](https://github.com/neovim/neovim/wiki/FAQ#backtrace-linux).
-- Use [ASAN/UBSAN](#clang-sanitizers-asan-and-ubsan) to get detailed errors for segfaults and undefined behavior.
+- When reporting a crash, [include a stacktrace](https://neovim.io/doc/user/dev_tools.html#dev-tools-backtrace).
+- Use [ASAN/UBSAN](#sanitizers-asan-and-ubsan) to get detailed errors for segfaults and undefined behavior.
 - Check the logs. `:edit $NVIM_LOG_FILE`
 - Include `cmake --system-information` for build-related issues.
 
 Developer guidelines
 --------------------
 
-- Read [:help dev](https://neovim.io/doc/user/develop.html#dev) if you are working on Nvim core.
+- Read [:help dev](https://neovim.io/doc/user/develop.html#dev) and [:help dev-doc][dev-doc-guide] if you are working on Nvim core.
 - Read [:help dev-ui](https://neovim.io/doc/user/develop.html#dev-ui) if you are developing a UI.
 - Read [:help dev-api-client](https://neovim.io/doc/user/develop.html#dev-api-client) if you are developing an API client.
 - Install `ninja` for faster builds of Nvim.
-  ```
+  ```bash
   sudo apt-get install ninja-build
   make distclean
   make  # Nvim build system uses ninja automatically, if available.
+  ```
+- Install `ccache` or `sccache` for faster rebuilds of Nvim. Nvim will use one
+  of these automatically if it's found. To disable caching use:
+  ```bash
+  cmake -B build -D CACHE_PRG=OFF
   ```
 
 Pull requests (PRs)
@@ -50,12 +55,8 @@ Pull requests (PRs)
 - Your PR must include [test coverage][run-tests].
 - Avoid cosmetic changes to unrelated files in the same commit.
 - Use a [feature branch][git-feature-branch] instead of the master branch.
-- Use a _rebase workflow_ for small PRs.
+- Use a _rebase workflow_ for all PRs.
   - After addressing review comments, it's fine to force-push.
-- Use a _merge workflow_ (as opposed to "rebase") for big, high-risk PRs.
-  - Merge `master` into your PR when there are conflicts or when master
-    introduces breaking changes.
-  - Do not edit commits that come before the merge commit.
 
 ### Merging to master
 
@@ -82,33 +83,36 @@ a comment.
 ### Commit messages
 
 Follow the [conventional commits guidelines][conventional_commits] to *make reviews easier* and to make
-the VCS/git logs more valuable. The general structure of a commit message is:
+the VCS/git logs more valuable (try `make lintcommit`). The structure of a commit message is:
 
-```
-<type>([optional scope]): <description>
+    type(scope): subject
 
-[optional body]
+    Problem:
+    ...
 
-[optional footer(s)]
-```
+    Solution:
+    ...
 
-- Prefix the commit subject with one of these [_types_](https://github.com/commitizen/conventional-commit-types/blob/master/index.json):
-    - `build`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `test`, `vim-patch`, `dist`
-    - You can **ignore this for "fixup" commits** or any commits you expect to be squashed.
-- Append optional scope to _type_ such as `(lsp)`, `(treesitter)`, `(float)`, …
-- _Description_ shouldn't start with a capital letter or end in a period.
-- Use the _imperative voice_: "Fix bug" rather than "Fixed bug" or "Fixes bug."
-- Try to keep the first line under 72 characters.
-- A blank line must follow the subject.
-- Breaking API changes must be indicated by
-    1. "!" after the type/scope, and
-    2. a "BREAKING CHANGE" footer describing the change.
-       Example:
-       ```
-       refactor(provider)!: drop support for Python 2
+- Commit message **subject** (you can **ignore this for "fixup" commits** or any commits you expect to be squashed):
+    - Prefix with a [_type_](https://github.com/commitizen/conventional-commit-types/blob/master/index.json):
+        - `build ci docs feat fix perf refactor revert test vim-patch`
+    - Append an optional `(scope)` such as `(lsp)`, `(treesitter)`, `(float)`, …
+    - Use the _imperative voice_: "Fix bug" rather than "Fixed bug" or "Fixes bug."
+    - Keep it short (under 72 characters).
+- Commit message **body** (detail):
+    - Concisely describe the Problem/Solution in the commit **body**. [Describing the problem](https://lamport.azurewebsites.net/pubs/state-the-problem.pdf)
+      _independently of the solution_ often leads to a better understanding for you, reviewers, and future readers.
+      ```
+      Problem:
 
-       BREAKING CHANGE: refactor to use Python 3 features since Python 2 is no longer supported.
-       ```
+      Solution:
+      ```
+- Indicate breaking API changes with "!" after the type, and a "BREAKING CHANGE" footer. Example:
+  ```
+  refactor(provider)!: drop support for Python 2
+
+  BREAKING CHANGE: refactor to use Python 3 features since Python 2 is no longer supported.
+  ```
 
 ### Automated builds (CI)
 
@@ -116,52 +120,23 @@ Each pull request must pass the automated builds on [Cirrus CI] and [GitHub Acti
 
 - CI builds are compiled with [`-Werror`][gcc-warnings], so compiler warnings
   will fail the build.
-- If any tests fail, the build will fail.
-  See [test/README.md#running-tests][run-tests] to run tests locally.
-  Passing locally doesn't guarantee passing the CI build, because of the
-  different compilers and platforms tested against.
+- If any tests fail, the build will fail. See [test/README.md#running-tests][run-tests] to run tests locally.
 - CI runs [ASan] and other analyzers.
     - To run valgrind locally: `VALGRIND=1 make test`
-    - To run Clang ASan/UBSan locally: `CC=clang make CMAKE_FLAGS="-DCLANG_ASAN_UBSAN=ON"`
-- The [lint](#lint) build checks modified lines _and their immediate
-  neighbors_, to encourage incrementally updating the legacy style to meet our
-  [style](#style). (See [#3174][3174] for background.)
+    - To run ASan/UBSan locally: `CC=clang make CMAKE_FLAGS="-DENABLE_ASAN_UBSAN=ON"`.
+      Note that MSVC requires Release or RelWithDebInfo build type to work properly.
+- The [lint](#lint) build checks that the code is formatted correctly and
+  passes various linter checks.
 - CI for FreeBSD runs on [Cirrus CI].
-
-### Clang scan-build
-
-View the [Clang report] to see potential bugs found by the Clang
-[scan-build](https://clang-analyzer.llvm.org/scan-build.html) analyzer.
-
-- Search the Neovim commit history to find examples:
-  ```
-  git log --oneline --no-merges --grep clang
-  ```
-- To verify a fix locally, run `scan-build` like this:
-  ```
-  rm -rf build/
-  scan-build --use-analyzer=/usr/bin/clang make
-  ```
-
-### PVS-Studio
-
-View the [PVS report](https://neovim.io/doc/reports/pvs/PVS-studio.html.d/) to
-see potential bugs found by [PVS Studio](https://www.viva64.com/en/pvs-studio/).
-
-- Use this format for commit messages (where `{id}` is the PVS warning-id)):
-  ```
-  fix(PVS/V{id}): {description}
-  ```
-- Search the Neovim commit history to find examples:
-  ```
-  git log --oneline --no-merges --grep PVS
-  ```
-- Try `./scripts/pvscheck.sh` to run PVS locally.
+- To see CI results faster in your PR, you can temporarily set `TEST_FILE` in
+  [test.yml](https://github.com/neovim/neovim/blob/e35b9020b16985eee26e942f9a3f6b045bc3809b/.github/workflows/test.yml#L29).
 
 ### Coverity
 
-[Coverity](https://scan.coverity.com/projects/neovim-neovim) runs against the
-master build. To view the defects, just request access; you will be approved.
+Coverity runs against the master build. To view the defects you must
+[request access](https://scan.coverity.com/projects/neovim-neovim) (Coverity
+does not have a "public" view), then you will be approved as soon as
+a maintainer sees the email.
 
 - Use this format for commit messages (where `{id}` is the CID (Coverity ID);
   ([example](https://github.com/neovim/neovim/pull/804))):
@@ -169,21 +144,21 @@ master build. To view the defects, just request access; you will be approved.
   fix(coverity/{id}): {description}
   ```
 - Search the Neovim commit history to find examples:
-  ```
+  ```bash
   git log --oneline --no-merges --grep coverity
   ```
 
-### Clang sanitizers (ASAN and UBSAN)
+### Sanitizers (ASAN and UBSAN)
 
   ASAN/UBSAN can be used to detect memory errors and other common forms of undefined behavior at runtime in debug builds.
 
 - To build Neovim with sanitizers enabled, use
   ```
-  rm -rf build && CMAKE_EXTRA_FLAGS="-DCMAKE_C_COMPILER=clang -DCLANG_ASAN_UBSAN=1" make
+  rm -rf build && CMAKE_EXTRA_FLAGS="-DCMAKE_C_COMPILER=clang -DENABLE_ASAN_UBSAN=1" make
   ```
 - When running Neovim, use
   ```
-  UBSAN_OPTIONS=print_stacktrace=1 ASAN_OPTIONS=log_path=/tmp/nvim_asan nvim args...
+  ASAN_OPTIONS=log_path=/tmp/nvim_asan nvim args...
   ```
 - If Neovim exits unexpectedly, check `/tmp/nvim_asan.{PID}` (or your preferred `log_path`) for log files with error messages.
 
@@ -195,33 +170,27 @@ Coding
 
 You can run the linter locally by:
 
-    make lint
-
-The lint step downloads the [master error list] and excludes them, so only lint
-errors related to the local changes are reported.
-
-You can lint a single file (but this will _not_ exclude legacy errors):
-
-    ./src/clint.py src/nvim/ops.c
+```bash
+make lint
+```
 
 ### Style
 
 - You can format files by using:
-  ```
-    make format
+  ```bash
+  make format  # or formatc, formatlua
   ```
   This will format changed Lua and C files with all appropriate flags set.
 - Style rules are (mostly) defined by `src/uncrustify.cfg` which tries to match
   the [style-guide]. To use the Nvim `gq` command with `uncrustify`:
-  ```
+  ```vim
   if !empty(findfile('src/uncrustify.cfg', ';'))
     setlocal formatprg=uncrustify\ -q\ -l\ C\ -c\ src/uncrustify.cfg\ --no-backup
   endif
   ```
-  The required version of `uncrustify` is specified in `uncrustify.cfg`.
 - There is also `.clang-format` which has drifted from the [style-guide], but
   is available for reference. To use the Nvim `gq` command with `clang-format`:
-  ```
+  ```vim
   if !empty(findfile('.clang-format', ';'))
     setlocal formatprg=clang-format\ -style=file
   endif
@@ -229,76 +198,143 @@ You can lint a single file (but this will _not_ exclude legacy errors):
 
 ### Navigate
 
-- Set `blame.ignoreRevsFile` to ignore [noise commits](https://github.com/neovim/neovim/commit/2d240024acbd68c2d3f82bc72cb12b1a4928c6bf) in git blame:
-  ```
+- Set `blame.ignoreRevsFile` to ignore [noisy commits](https://github.com/neovim/neovim/commit/2d240024acbd68c2d3f82bc72cb12b1a4928c6bf) in git blame:
+  ```bash
   git config blame.ignoreRevsFile .git-blame-ignore-revs
   ```
 
 - Recommendation is to use **[clangd]**.
   Can use the maintained config in [nvim-lspconfig/clangd].
 - Explore the source code [on the web](https://sourcegraph.com/github.com/neovim/neovim).
-- If using [lua-language-server], symlink `contrib/luarc.json` into the
-  project root:
-
-      $ ln -s contrib/luarc.json .luarc.json
 
 ### Includes
 
 For managing includes in C files, use [include-what-you-use].
 
 - [Install include-what-you-use][include-what-you-use-install]
-- Run with:
+- To see which includes needs fixing use the cmake preset `iwyu`:
+  ```bash
+  cmake --preset iwyu
+  cmake --build build
   ```
-  make CMAKE_EXTRA_FLAGS=-DCMAKE_C_INCLUDE_WHAT_YOU_USE=include-what-you-use | tee iwyu.txt
+- There's also a make target that automatically fixes the suggestions from
+  IWYU:
+  ```bash
+  make iwyu
   ```
 
 See [#549][549] for more details.
 
-Documenting
------------
+### Lua runtime files
 
-Many parts of the `:help` documentation are autogenerated from C or Lua docstrings using the `./scripts/gen_vimdoc.py` script.
-You can filter the regeneration based on the target (api, lua, or lsp), or the file you changed, that need a doc refresh using `./scripts/gen_vimdoc.py -t <target>`.
+Most of the Lua core [`runtime/`](./runtime) modules are precompiled to
+bytecode, so changes to those files won't get used unless you rebuild Nvim or
+by passing `--luamod-dev` and `$VIMRUNTIME`. For example, try adding a function
+to `runtime/lua/vim/_editor.lua` then:
 
-## Lua docstrings
-
-Lua documentation uses a subset of [EmmyLua] annotations. A rough outline of a function documentation is
-
-```lua
---- {Brief}
----
---- {Long explanation}
----
----@param arg1 type {description}
----@param arg2 type {description}
-{...}
----
----@return type {description}
+```bash
+VIMRUNTIME=./runtime ./build/bin/nvim --luamod-dev
 ```
 
-If possible, always add type information (`table`, `string`, `number`, ...). Multiple valid types are separated by a bar (`string|table`). Indicate optional parameters via `type|nil`.
+Documentation
+-------------
 
-If a function in your Lua module should not be documented (e.g. internal function or local function), you should set the doc comment to:
+Read [:help dev-doc][dev-doc-guide] to understand the expected documentation style and conventions.
 
-```
----@private
+### Generating :help
+
+Many `:help` docs are autogenerated from (C or Lua) docstrings. To generate the documentation run:
+
+```bash
+make doc
 ```
 
-Mark functions that are deprecated as 
+To validate the documentation files, run:
+
+```bash
+make lintdoc
 ```
----@deprecated
+
+If you need to modify or debug the documentation flow, these are the main files:
+- `./scripts/gen_vimdoc.lua`:
+  Main doc generator. Parses C and Lua files to render vimdoc files.
+- `./scripts/luacats_parser.lua`:
+  Documentation parser for Lua files.
+- `./scripts/cdoc_parser.lua`:
+  Documentation parser for C files.
+- `./scripts/luacats_grammar.lua`:
+  Lpeg grammar for LuaCATS
+- `./scripts/cdoc_grammar.lua`:
+  Lpeg grammar for C doc comments
+- `./scripts/gen_eval_files.lua`:
+  Generates documentation and Lua type files from metadata files:
+  ```
+  runtime/lua/vim/*     =>  runtime/doc/lua.txt
+  runtime/lua/vim/*     =>  runtime/doc/lua.txt
+  runtime/lua/vim/lsp/  =>  runtime/doc/lsp.txt
+  src/nvim/api/*        =>  runtime/doc/api.txt
+  src/nvim/eval.lua     =>  runtime/doc/builtin.txt
+  src/nvim/options.lua  =>  runtime/doc/options.txt
+  ```
+
+- `./scripts/lintdoc.lua`: Validation and linting of documentation files.
+
+### Lua docstrings
+
+Use [LuaLS] annotations in Lua docstrings to annotate parameter types, return
+types, etc. See [:help dev-lua-doc][dev-lua-doc].
+
+- The template for function documentation is:
+  ```lua
+  --- {Brief}
+  ---
+  --- {Long explanation}
+  ---
+  --- @param arg1 type {description}
+  --- @param arg2 type {description}
+  --- ...
+  ---
+  --- @return type {description}
+  ```
+- If possible, add type information (`table`, `string`, `number`, ...). Multiple valid types are separated by a bar (`string|table`). Indicate optional parameters via `type|nil`.
+- If a function in your Lua module should _not_ be documented, add `@nodoc`.
+- If the function is internal or otherwise non-public add `@private`.
+      - Private functions usually should be underscore-prefixed (named "_foo", not "foo").
+- Mark deprecated functions with `@deprecated`.
+
+Third-party dependencies
+------------------------
+
+To build Nvim using a different commit of a dependency change the appropriate
+URL in `cmake.deps/deps.txt`. For example, to use a different version of luajit
+replace the value in `LUAJIT_URL` with the wanted commit hash:
+
+```bash
+LUAJIT_URL https://github.com/LuaJIT/LuaJIT/archive/<sha>.tar.gz
+```
+
+Set `DEPS_IGNORE_SHA` to `TRUE` in `cmake.deps/CMakeLists.txt` to skip hash
+check from cmake.
+
+Alternatively, you may point the URL as a local path where the repository is.
+This is convenient when bisecting a problem in a dependency with `git bisect`.
+This may require running `make distclean` between each build. Hash checking is
+always skipped in this case regardless of `DEPS_IGNORE_SHA`.
+
+```bash
+LUAJIT_URL /home/user/luajit
 ```
 
 Reviewing
 ---------
 
-To help review pull requests, start with [this checklist][review-checklist].
-
 Reviewing can be done on GitHub, but you may find it easier to do locally.
 Using [GitHub CLI][gh], you can create a new branch with the contents of a pull
 request, e.g. [#1820][1820]:
 
-    gh pr checkout https://github.com/neovim/neovim/pull/1820
+```bash
+gh pr checkout https://github.com/neovim/neovim/pull/1820
+```
 
 Use [`git log -p master..FETCH_HEAD`][git-history-filtering] to list all
 commits in the feature branch which aren't in the `master` branch; `-p`
@@ -312,29 +348,26 @@ as context, use the `-W` argument as well.
 [Cirrus CI]: https://cirrus-ci.com/github/neovim/neovim
 [Clang report]: https://neovim.io/doc/reports/clang/
 [GitHub Actions]: https://github.com/neovim/neovim/actions
+[Vim]: https://github.com/vim/vim
 [clangd]: https://clangd.llvm.org
-[Merge a Vim patch]: https://github.com/neovim/neovim/wiki/Merging-patches-from-upstream-Vim
+[Merge a Vim patch]: https://neovim.io/doc/user/dev_vimpatch.html
 [complexity:low]: https://github.com/neovim/neovim/issues?q=is%3Aopen+is%3Aissue+label%3Acomplexity%3Alow
 [conventional_commits]: https://www.conventionalcommits.org
-[EmmyLua]: https://github.com/sumneko/lua-language-server/wiki/Annotations
+[dev-doc-guide]: https://neovim.io/doc/user/develop.html#dev-doc
+[dev-lua-doc]: https://neovim.io/doc/user/develop.html#dev-lua-doc
+[LuaLS]: https://luals.github.io/wiki/annotations/
 [gcc-warnings]: https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html
 [gh]: https://cli.github.com/
 [git-bisect]: http://git-scm.com/book/en/v2/Git-Tools-Debugging-with-Git
 [git-feature-branch]: https://www.atlassian.com/git/tutorials/comparing-workflows
 [git-history-filtering]: https://www.atlassian.com/git/tutorials/git-log/filtering-the-commit-history
-[git-history-rewriting]: http://git-scm.com/book/en/v2/Git-Tools-Rewriting-History
-[git-rebasing]: http://git-scm.com/book/en/v2/Git-Branching-Rebasing
 [github-issues]: https://github.com/neovim/neovim/issues
 [include-what-you-use-install]: https://github.com/include-what-you-use/include-what-you-use#how-to-install
 [include-what-you-use]: https://github.com/include-what-you-use/include-what-you-use#using-with-cmake
 [lua-language-server]: https://github.com/sumneko/lua-language-server/
-[master error list]: https://raw.githubusercontent.com/neovim/doc/gh-pages/reports/clint/errors.json
 [nvim-lspconfig/clangd]: https://github.com/neovim/nvim-lspconfig/blob/master/doc/server_configurations.md#clangd
 [pr-draft]: https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request
 [pr-ready]: https://docs.github.com/en/github/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/changing-the-stage-of-a-pull-request
-[review-checklist]: https://github.com/neovim/neovim/wiki/Code-review-checklist
 [run-tests]: https://github.com/neovim/neovim/blob/master/test/README.md#running-tests
 [style-guide]: https://neovim.io/doc/user/dev_style.html#dev-style
-[uncrustify]: http://uncrustify.sourceforge.net/
-[wiki-contribute-help]: https://github.com/neovim/neovim/wiki/contribute-%3Ahelp
-[wiki-faq]: https://github.com/neovim/neovim/wiki/FAQ
+[wiki-faq]: https://neovim.io/doc/user/faq.html

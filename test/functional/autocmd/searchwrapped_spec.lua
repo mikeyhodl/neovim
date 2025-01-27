@@ -1,11 +1,12 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local clear = helpers.clear
-local command = helpers.command
-local curbufmeths = helpers.curbufmeths
-local eq = helpers.eq
-local eval = helpers.eval
-local feed = helpers.feed
+local clear = n.clear
+local command = n.command
+local api = n.api
+local eq = t.eq
+local eval = n.eval
+local feed = n.feed
 
 describe('autocmd SearchWrapped', function()
   before_each(function()
@@ -13,9 +14,10 @@ describe('autocmd SearchWrapped', function()
     command('set ignorecase')
     command('let g:test = 0')
     command('autocmd! SearchWrapped * let g:test += 1')
-    curbufmeths.set_lines(0, 1, false, {
+    api.nvim_buf_set_lines(0, 0, 1, false, {
       'The quick brown fox',
-      'jumps over the lazy dog'})
+      'jumps over the lazy dog',
+    })
   end)
 
   it('gets triggered when search wraps the end', function()

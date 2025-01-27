@@ -1,12 +1,19 @@
-#ifndef NVIM_EVAL_USERFUNC_H
-#define NVIM_EVAL_USERFUNC_H
+#pragma once
 
-#include "nvim/eval/typval.h"
-#include "nvim/ex_cmds_defs.h"
+#include <stdbool.h>
+#include <stddef.h>
+
+#include "nvim/cmdexpand_defs.h"  // IWYU pragma: keep
+#include "nvim/eval/typval_defs.h"
+#include "nvim/eval_defs.h"  // IWYU pragma: keep
+#include "nvim/ex_cmds_defs.h"  // IWYU pragma: keep
+#include "nvim/hashtab_defs.h"  // IWYU pragma: keep
+#include "nvim/pos_defs.h"
+#include "nvim/types_defs.h"  // IWYU pragma: keep
 
 // From user function to hashitem and back.
 #define UF2HIKEY(fp) ((fp)->uf_name)
-#define HIKEY2UF(p)  ((ufunc_T *)(p - offsetof(ufunc_T, uf_name)))
+#define HIKEY2UF(p)  ((ufunc_T *)((p) - offsetof(ufunc_T, uf_name)))
 #define HI2UF(hi)    HIKEY2UF((hi)->hi_key)
 
 // flags used in uf_flags
@@ -17,17 +24,17 @@
 #define FC_DELETED  0x10          // :delfunction used while uf_refcount > 0
 #define FC_REMOVED  0x20          // function redefined while uf_refcount > 0
 #define FC_SANDBOX  0x40          // function defined in the sandbox
-#define FC_DEAD     0x80          // function kept only for reference to dfunc
-#define FC_EXPORT   0x100         // "export def Func()"
+// #define FC_DEAD     0x80          // function kept only for reference to dfunc
+// #define FC_EXPORT   0x100         // "export def Func()"
 #define FC_NOARGS   0x200         // no a: variables in lambda
-#define FC_VIM9     0x400         // defined in vim9 script file
+// #define FC_VIM9     0x400         // defined in vim9 script file
 #define FC_LUAREF  0x800          // luaref callback
 
 /// Structure used by trans_function_name()
 typedef struct {
-  dict_T *fd_dict;  ///< Dictionary used.
-  char_u *fd_newkey;  ///< New key in "dict" in allocated memory.
-  dictitem_T *fd_di;  ///< Dictionary item used.
+  dict_T *fd_dict;    ///< Dict used.
+  char *fd_newkey;    ///< New key in "dict" in allocated memory.
+  dictitem_T *fd_di;  ///< Dict item used.
 } funcdict_T;
 
 typedef struct funccal_entry funccal_entry_T;
@@ -62,8 +69,10 @@ typedef struct {
   bool *fe_doesrange;     ///< [out] if not NULL: function handled range
   bool fe_evaluate;       ///< actually evaluate expressions
   partial_T *fe_partial;  ///< for extra arguments
-  dict_T *fe_selfdict;    ///< Dictionary for "self"
+  dict_T *fe_selfdict;    ///< Dict for "self"
   typval_T *fe_basetv;    ///< base for base->method()
+  bool fe_found_var;      ///< if the function is not found then give an
+                          ///< error that a variable is not callable.
 } funcexe_T;
 
 #define FUNCEXE_INIT (funcexe_T) { \
@@ -75,6 +84,7 @@ typedef struct {
   .fe_partial = NULL, \
   .fe_selfdict = NULL, \
   .fe_basetv = NULL, \
+  .fe_found_var = false, \
 }
 
 #define FUNCARG(fp, j)  ((char **)(fp->uf_args.ga_data))[j]
@@ -83,4 +93,3 @@ typedef struct {
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "eval/userfunc.h.generated.h"
 #endif
-#endif  // NVIM_EVAL_USERFUNC_H

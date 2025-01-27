@@ -1,14 +1,15 @@
 -- Tests for sha256() function.
 
-local helpers = require('test.functional.helpers')(after_each)
-local insert, source = helpers.insert, helpers.source
-local clear, expect = helpers.clear, helpers.expect
+local n = require('test.functional.testnvim')()
+
+local insert, source = n.insert, n.source
+local clear, expect = n.clear, n.expect
 
 describe('sha256()', function()
   setup(clear)
 
   it('is working', function()
-    insert("start:")
+    insert('start:')
 
     source([[
       let testcase='test for empty string: '

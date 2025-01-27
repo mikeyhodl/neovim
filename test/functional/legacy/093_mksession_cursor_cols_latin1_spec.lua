@@ -3,9 +3,10 @@
 --
 -- Same as legacy test 92 but using Latin-1 file encoding.
 
-local helpers = require('test.functional.helpers')(after_each)
-local feed, insert = helpers.feed, helpers.insert
-local clear, feed_command, expect = helpers.clear, helpers.feed_command, helpers.expect
+local n = require('test.functional.testnvim')()
+
+local feed, insert = n.feed, n.insert
+local clear, feed_command, expect = n.clear, n.feed_command, n.expect
 
 describe('store cursor position in session file in Latin-1', function()
   setup(clear)

@@ -1,11 +1,10 @@
-#ifndef NVIM_API_AUTOCMD_H
-#define NVIM_API_AUTOCMD_H
+#pragma once
 
-#include <stdint.h>
+#include <stdint.h>  // IWYU pragma: keep
 
-#include "nvim/api/private/defs.h"
+#include "nvim/api/keysets_defs.h"  // IWYU pragma: keep
+#include "nvim/api/private/defs.h"  // IWYU pragma: keep
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "api/autocmd.h.generated.h"
 #endif
-#endif  // NVIM_API_AUTOCMD_H

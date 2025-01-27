@@ -1,10 +1,10 @@
-local helpers = require('test.functional.helpers')(after_each)
+local n = require('test.functional.testnvim')()
 
-local feed = helpers.feed
-local clear = helpers.clear
-local insert = helpers.insert
-local feed_command = helpers.feed_command
-local expect = helpers.expect
+local feed = n.feed
+local clear = n.clear
+local insert = n.insert
+local feed_command = n.feed_command
+local expect = n.expect
 
 describe('text formatting', function()
   setup(clear)

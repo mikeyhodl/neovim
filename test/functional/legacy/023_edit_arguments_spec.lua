@@ -1,9 +1,10 @@
 -- Tests for complicated + argument to :edit command
 
-local helpers = require('test.functional.helpers')(after_each)
-local clear, insert = helpers.clear, helpers.insert
-local command, expect = helpers.command, helpers.expect
-local poke_eventloop = helpers.poke_eventloop
+local n = require('test.functional.testnvim')()
+
+local clear, insert = n.clear, n.insert
+local command, expect = n.command, n.expect
+local poke_eventloop = n.poke_eventloop
 
 describe(':edit', function()
   setup(clear)
@@ -28,7 +29,7 @@ describe(':edit', function()
 
     -- Open Xfile2 using '|' range
     command('edit Xfile2|1')
-    command("s/\\//SLASH/")
+    command('s/\\//SLASH/')
     command('yank A')
     command('w! Xfile2')
 

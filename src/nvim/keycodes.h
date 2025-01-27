@@ -1,7 +1,7 @@
-#ifndef NVIM_KEYCODES_H
-#define NVIM_KEYCODES_H
+#pragma once
 
-#include "nvim/strings.h"
+#include "nvim/ascii_defs.h"
+#include "nvim/eval/typval_defs.h"  // IWYU pragma: keep
 
 // Keycode definitions for special keys.
 //
@@ -55,7 +55,7 @@
 // Used for switching Select mode back on after a mapping or menu.
 
 #define KS_SELECT               245
-#define K_SELECT_STRING         (char_u *)"\200\365X"
+#define K_SELECT_STRING         "\200\365X"
 
 /// Used a termcap entry that produces a normal character.
 #define KS_KEY                  242
@@ -380,6 +380,10 @@ enum key_extra {
 #define K_KENTER        TERMCAP2KEY('K', 'A')   // keypad Enter
 #define K_KPOINT        TERMCAP2KEY('K', 'B')   // keypad . or ,
 
+// Delimits pasted text (to repeat nvim_paste). Internal-only, not sent by UIs.
+#define K_PASTE_START   TERMCAP2KEY('P', 'S')   // paste start
+#define K_PASTE_END     TERMCAP2KEY('P', 'E')   // paste end
+
 #define K_K0            TERMCAP2KEY('K', 'C')   // keypad 0
 #define K_K1            TERMCAP2KEY('K', 'D')   // keypad 1
 #define K_K2            TERMCAP2KEY('K', 'E')   // keypad 2
@@ -472,11 +476,6 @@ enum key_extra {
 /// This is a total of 6 tokens, and is currently the longest one possible.
 #define MAX_KEY_CODE_LEN    6
 
-#define FLAG_CPO_BSLASH    0x01
-#define CPO_TO_CPO_FLAGS   ((vim_strchr((char *)p_cpo, CPO_BSLASH) == NULL) \
-                            ? 0 \
-                            : FLAG_CPO_BSLASH)
-
 /// Flags for replace_termcodes()
 enum {
   REPTERM_FROM_PART   = 1,
@@ -496,4 +495,3 @@ enum {
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "keycodes.h.generated.h"
 #endif
-#endif  // NVIM_KEYCODES_H

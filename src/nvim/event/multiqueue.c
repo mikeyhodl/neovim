@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 // Multi-level queue for selective async event processing.
 // Not threadsafe; access must be synchronized externally.
 //
@@ -40,20 +37,19 @@
 //
 // The main reason for this queue hierarchy is to allow focusing on a single
 // event emitter while blocking the main loop. For example, if the `jobwait`
-// VimL function is called on job1, the main loop will temporarily stop polling
+// Vimscript function is called on job1, the main loop will temporarily stop polling
 // the event loop queue and poll job1 queue instead. Same with channels, when
 // calling `rpcrequest` we want to temporarily stop processing events from
 // other sources and focus on a specific channel.
 
 #include <assert.h>
-#include <stdarg.h>
 #include <stdbool.h>
-#include <stdint.h>
-#include <uv.h>
+#include <stddef.h>
 
+#include "nvim/event/defs.h"
 #include "nvim/event/multiqueue.h"
+#include "nvim/lib/queue_defs.h"
 #include "nvim/memory.h"
-#include "nvim/os/time.h"
 
 typedef struct multiqueue_item MultiQueueItem;
 struct multiqueue_item {
@@ -112,13 +108,13 @@ static MultiQueue *multiqueue_new(MultiQueue *parent, PutCallback put_cb, void *
   return rv;
 }
 
-void multiqueue_free(MultiQueue *this)
+void multiqueue_free(MultiQueue *self)
 {
-  assert(this);
+  assert(self);
   QUEUE *q;
-  QUEUE_FOREACH(q, &this->headtail, {
+  QUEUE_FOREACH(q, &self->headtail, {
     MultiQueueItem *item = multiqueue_node_data(q);
-    if (this->parent) {
+    if (self->parent) {
       QUEUE_REMOVE(&item->data.item.parent_item->node);
       xfree(item->data.item.parent_item);
     }
@@ -126,29 +122,29 @@ void multiqueue_free(MultiQueue *this)
     xfree(item);
   })
 
-  xfree(this);
+  xfree(self);
 }
 
 /// Removes the next item and returns its Event.
-Event multiqueue_get(MultiQueue *this)
+Event multiqueue_get(MultiQueue *self)
 {
-  return multiqueue_empty(this) ? NILEVENT : multiqueue_remove(this);
+  return multiqueue_empty(self) ? NILEVENT : multiqueue_remove(self);
 }
 
-void multiqueue_put_event(MultiQueue *this, Event event)
+void multiqueue_put_event(MultiQueue *self, Event event)
 {
-  assert(this);
-  multiqueue_push(this, event);
-  if (this->parent && this->parent->put_cb) {
-    this->parent->put_cb(this->parent, this->parent->data);
+  assert(self);
+  multiqueue_push(self, event);
+  if (self->parent && self->parent->put_cb) {
+    self->parent->put_cb(self->parent, self->parent->data);
   }
 }
 
-void multiqueue_process_events(MultiQueue *this)
+void multiqueue_process_events(MultiQueue *self)
 {
-  assert(this);
-  while (!multiqueue_empty(this)) {
-    Event event = multiqueue_remove(this);
+  assert(self);
+  while (!multiqueue_empty(self)) {
+    Event event = multiqueue_remove(self);
     if (event.handler) {
       event.handler(event.argv);
     }
@@ -156,30 +152,30 @@ void multiqueue_process_events(MultiQueue *this)
 }
 
 /// Removes all events without processing them.
-void multiqueue_purge_events(MultiQueue *this)
+void multiqueue_purge_events(MultiQueue *self)
 {
-  assert(this);
-  while (!multiqueue_empty(this)) {
-    (void)multiqueue_remove(this);
+  assert(self);
+  while (!multiqueue_empty(self)) {
+    multiqueue_remove(self);
   }
 }
 
-bool multiqueue_empty(MultiQueue *this)
+bool multiqueue_empty(MultiQueue *self)
 {
-  assert(this);
-  return QUEUE_EMPTY(&this->headtail);
+  assert(self);
+  return QUEUE_EMPTY(&self->headtail);
 }
 
-void multiqueue_replace_parent(MultiQueue *this, MultiQueue *new_parent)
+void multiqueue_replace_parent(MultiQueue *self, MultiQueue *new_parent)
 {
-  assert(multiqueue_empty(this));
-  this->parent = new_parent;
+  assert(multiqueue_empty(self));
+  self->parent = new_parent;
 }
 
 /// Gets the count of all events currently in the queue.
-size_t multiqueue_size(MultiQueue *this)
+size_t multiqueue_size(MultiQueue *self)
 {
-  return this->size;
+  return self->size;
 }
 
 /// Gets an Event from an item.
@@ -213,38 +209,39 @@ static Event multiqueueitem_get_event(MultiQueueItem *item, bool remove)
   return ev;
 }
 
-static Event multiqueue_remove(MultiQueue *this)
+static Event multiqueue_remove(MultiQueue *self)
 {
-  assert(!multiqueue_empty(this));
-  QUEUE *h = QUEUE_HEAD(&this->headtail);
+  assert(!multiqueue_empty(self));
+  QUEUE *h = QUEUE_HEAD(&self->headtail);
   QUEUE_REMOVE(h);
   MultiQueueItem *item = multiqueue_node_data(h);
-  assert(!item->link || !this->parent);  // Only a parent queue has link-nodes
+  assert(!item->link || !self->parent);  // Only a parent queue has link-nodes
   Event ev = multiqueueitem_get_event(item, true);
-  this->size--;
+  self->size--;
   xfree(item);
   return ev;
 }
 
-static void multiqueue_push(MultiQueue *this, Event event)
+static void multiqueue_push(MultiQueue *self, Event event)
 {
   MultiQueueItem *item = xmalloc(sizeof(MultiQueueItem));
   item->link = false;
   item->data.item.event = event;
   item->data.item.parent_item = NULL;
-  QUEUE_INSERT_TAIL(&this->headtail, &item->node);
-  if (this->parent) {
+  QUEUE_INSERT_TAIL(&self->headtail, &item->node);
+  if (self->parent) {
     // push link node to the parent queue
     item->data.item.parent_item = xmalloc(sizeof(MultiQueueItem));
     item->data.item.parent_item->link = true;
-    item->data.item.parent_item->data.queue = this;
-    QUEUE_INSERT_TAIL(&this->parent->headtail,
+    item->data.item.parent_item->data.queue = self;
+    QUEUE_INSERT_TAIL(&self->parent->headtail,
                       &item->data.item.parent_item->node);
   }
-  this->size++;
+  self->size++;
 }
 
 static MultiQueueItem *multiqueue_node_data(QUEUE *q)
+  FUNC_ATTR_NO_SANITIZE_ADDRESS
 {
   return QUEUE_DATA(q, MultiQueueItem, node);
 }
@@ -263,7 +260,7 @@ Event event_create_oneshot(Event ev, int num)
   data->event = ev;
   data->fired = false;
   data->refcount = num;
-  return event_create(multiqueue_oneshot_event, 1, data);
+  return event_create(multiqueue_oneshot_event, data);
 }
 static void multiqueue_oneshot_event(void **argv)
 {

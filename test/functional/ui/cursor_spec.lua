@@ -1,8 +1,10 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local clear, meths = helpers.clear, helpers.meths
-local eq = helpers.eq
-local command = helpers.command
+
+local clear, api = n.clear, n.api
+local eq = t.eq
+local command = n.command
 
 describe('ui/cursor', function()
   local screen
@@ -10,7 +12,6 @@ describe('ui/cursor', function()
   before_each(function()
     clear()
     screen = Screen.new(25, 5)
-    screen:attach()
   end)
 
   it("'guicursor' is published as a UI event", function()
@@ -27,7 +28,8 @@ describe('ui/cursor', function()
         attr = {},
         attr_lm = {},
         mouse_shape = 0,
-        short_name = 'n' },
+        short_name = 'n',
+      },
       [2] = {
         blinkoff = 0,
         blinkon = 0,
@@ -40,7 +42,8 @@ describe('ui/cursor', function()
         attr = {},
         attr_lm = {},
         mouse_shape = 0,
-        short_name = 'v' },
+        short_name = 'v',
+      },
       [3] = {
         blinkoff = 0,
         blinkon = 0,
@@ -53,7 +56,8 @@ describe('ui/cursor', function()
         attr = {},
         attr_lm = {},
         mouse_shape = 0,
-        short_name = 'i' },
+        short_name = 'i',
+      },
       [4] = {
         blinkoff = 0,
         blinkon = 0,
@@ -66,7 +70,8 @@ describe('ui/cursor', function()
         attr = {},
         attr_lm = {},
         mouse_shape = 0,
-        short_name = 'r' },
+        short_name = 'r',
+      },
       [5] = {
         blinkoff = 0,
         blinkon = 0,
@@ -79,7 +84,8 @@ describe('ui/cursor', function()
         attr = {},
         attr_lm = {},
         mouse_shape = 0,
-        short_name = 'c' },
+        short_name = 'c',
+      },
       [6] = {
         blinkoff = 0,
         blinkon = 0,
@@ -92,7 +98,8 @@ describe('ui/cursor', function()
         attr = {},
         attr_lm = {},
         mouse_shape = 0,
-        short_name = 'ci' },
+        short_name = 'ci',
+      },
       [7] = {
         blinkoff = 0,
         blinkon = 0,
@@ -105,7 +112,8 @@ describe('ui/cursor', function()
         attr = {},
         attr_lm = {},
         mouse_shape = 0,
-        short_name = 'cr' },
+        short_name = 'cr',
+      },
       [8] = {
         blinkoff = 0,
         blinkon = 0,
@@ -118,7 +126,8 @@ describe('ui/cursor', function()
         attr = {},
         attr_lm = {},
         mouse_shape = 0,
-        short_name = 'o' },
+        short_name = 'o',
+      },
       [9] = {
         blinkoff = 0,
         blinkon = 0,
@@ -131,35 +140,43 @@ describe('ui/cursor', function()
         attr = {},
         attr_lm = {},
         mouse_shape = 0,
-        short_name = 've' },
+        short_name = 've',
+      },
       [10] = {
         name = 'cmdline_hover',
         mouse_shape = 0,
-        short_name = 'e' },
+        short_name = 'e',
+      },
       [11] = {
         name = 'statusline_hover',
         mouse_shape = 0,
-        short_name = 's' },
+        short_name = 's',
+      },
       [12] = {
         name = 'statusline_drag',
         mouse_shape = 0,
-        short_name = 'sd' },
+        short_name = 'sd',
+      },
       [13] = {
         name = 'vsep_hover',
         mouse_shape = 0,
-        short_name = 'vs' },
+        short_name = 'vs',
+      },
       [14] = {
         name = 'vsep_drag',
         mouse_shape = 0,
-        short_name = 'vd' },
+        short_name = 'vd',
+      },
       [15] = {
         name = 'more',
         mouse_shape = 0,
-        short_name = 'm' },
+        short_name = 'm',
+      },
       [16] = {
         name = 'more_lastline',
         mouse_shape = 0,
-        short_name = 'ml' },
+        short_name = 'ml',
+      },
       [17] = {
         blinkoff = 0,
         blinkon = 0,
@@ -171,8 +188,22 @@ describe('ui/cursor', function()
         id_lm = 0,
         attr = {},
         attr_lm = {},
-        short_name = 'sm' },
-      }
+        short_name = 'sm',
+      },
+      [18] = {
+        blinkoff = 500,
+        blinkon = 500,
+        blinkwait = 0,
+        cell_percentage = 0,
+        cursor_shape = 'block',
+        name = 'terminal',
+        hl_id = 3,
+        id_lm = 3,
+        attr = { reverse = true },
+        attr_lm = { reverse = true },
+        short_name = 't',
+      },
+    }
 
     screen:expect(function()
       -- Default 'guicursor', published on startup.
@@ -184,58 +215,78 @@ describe('ui/cursor', function()
     -- Event is published ONLY if the cursor style changed.
     screen._mode_info = nil
     command("echo 'test'")
-    screen:expect{grid=[[
+    screen:expect {
+      grid = [[
       ^                         |
-      ~                        |
-      ~                        |
-      ~                        |
+      {1:~                        }|*3
       test                     |
-    ]], condition=function()
-      eq(nil, screen._mode_info)
-    end}
+    ]],
+      condition = function()
+        eq(nil, screen._mode_info)
+      end,
+    }
 
     -- Change the cursor style.
-    helpers.command('hi Cursor guibg=DarkGray')
-    helpers.command('set guicursor=n-v-c:block,i-ci-ve:ver25,r-cr-o:hor20'
-      ..',a:blinkwait700-blinkoff400-blinkon250-Cursor/lCursor'
-      ..',sm:block-blinkwait175-blinkoff150-blinkon175')
+    n.command('hi Cursor guibg=DarkGray')
+    n.command(
+      'set guicursor=n-v-c:block,i-ci-ve:ver25,r-cr-o:hor20'
+        .. ',a:blinkwait700-blinkoff400-blinkon250-Cursor/lCursor'
+        .. ',sm:block-blinkwait175-blinkoff150-blinkon175'
+    )
 
     -- Update the expected values.
     for _, m in ipairs(expected_mode_info) do
       if m.name == 'showmatch' then
-        if m.blinkon then m.blinkon = 175 end
-        if m.blinkoff then m.blinkoff = 150 end
-        if m.blinkwait then m.blinkwait = 175 end
+        if m.blinkon then
+          m.blinkon = 175
+        end
+        if m.blinkoff then
+          m.blinkoff = 150
+        end
+        if m.blinkwait then
+          m.blinkwait = 175
+        end
       else
-        if m.blinkon then m.blinkon = 250 end
-        if m.blinkoff then m.blinkoff = 400 end
-        if m.blinkwait then m.blinkwait = 700 end
+        if m.blinkon then
+          m.blinkon = 250
+        end
+        if m.blinkoff then
+          m.blinkoff = 400
+        end
+        if m.blinkwait then
+          m.blinkwait = 700
+        end
       end
       if m.hl_id then
-          m.hl_id = 60
-          m.attr = {background = Screen.colors.DarkGray}
+        m.hl_id = 65
+        m.attr = { background = Screen.colors.DarkGray }
       end
-      if m.id_lm then m.id_lm = 61 end
+      if m.id_lm then
+        m.id_lm = 72
+        m.attr_lm = {}
+      end
     end
 
     -- Assert the new expectation.
     screen:expect(function()
-      eq(expected_mode_info, screen._mode_info)
+      for i, v in ipairs(expected_mode_info) do
+        eq(v, screen._mode_info[i])
+      end
       eq(true, screen._cursor_style_enabled)
       eq('normal', screen.mode)
     end)
 
     -- Change hl groups only, should update the styles
-    helpers.command('hi Cursor guibg=Red')
-    helpers.command('hi lCursor guibg=Green')
+    n.command('hi Cursor guibg=Red')
+    n.command('hi lCursor guibg=Green')
 
     -- Update the expected values.
     for _, m in ipairs(expected_mode_info) do
       if m.hl_id then
-          m.attr = {background = Screen.colors.Red}
+        m.attr = { background = Screen.colors.Red }
       end
       if m.id_lm then
-          m.attr_lm = {background = Screen.colors.Green}
+        m.attr_lm = { background = Screen.colors.Green }
       end
     end
     -- Assert the new expectation.
@@ -246,27 +297,31 @@ describe('ui/cursor', function()
     end)
 
     -- update the highlight again to hide cursor
-    helpers.command('hi Cursor blend=100')
+    n.command('hi Cursor blend=100')
 
     for _, m in ipairs(expected_mode_info) do
       if m.hl_id then
-          m.attr = {background = Screen.colors.Red, blend = 100}
+        m.attr = { background = Screen.colors.Red, blend = 100 }
       end
     end
-    screen:expect{grid=[[
+    screen:expect {
+      grid = [[
       ^                         |
-      ~                        |
-      ~                        |
-      ~                        |
+      {1:~                        }|*3
       test                     |
-    ]], condition=function()
-      eq(expected_mode_info, screen._mode_info)
-    end
+    ]],
+      condition = function()
+        eq(expected_mode_info, screen._mode_info)
+      end,
     }
 
     -- Another cursor style.
-    meths.set_option('guicursor', 'n-v-c:ver35-blinkwait171-blinkoff172-blinkon173'
-      ..',ve:hor35,o:ver50,i-ci:block,r-cr:hor90,sm:ver42')
+    api.nvim_set_option_value(
+      'guicursor',
+      'n-v-c:ver35-blinkwait171-blinkoff172-blinkon173'
+        .. ',ve:hor35,o:ver50,i-ci:block,r-cr:hor90,sm:ver42',
+      {}
+    )
     screen:expect(function()
       local named = {}
       for _, m in ipairs(screen._mode_info) do
@@ -288,9 +343,13 @@ describe('ui/cursor', function()
     end)
 
     -- If there is no setting for guicursor, it becomes the default setting.
-    meths.set_option('guicursor', 'n:ver35-blinkwait171-blinkoff172-blinkon173-Cursor/lCursor')
+    api.nvim_set_option_value(
+      'guicursor',
+      'n:ver35-blinkwait171-blinkoff172-blinkon173-Cursor/lCursor',
+      {}
+    )
     screen:expect(function()
-      for _,m in ipairs(screen._mode_info) do
+      for _, m in ipairs(screen._mode_info) do
         if m.name ~= 'normal' then
           eq('block', m.cursor_shape or 'block')
           eq(0, m.blinkon or 0)
@@ -304,7 +363,7 @@ describe('ui/cursor', function()
   end)
 
   it("empty 'guicursor' sets cursor_shape=block in all modes", function()
-    meths.set_option('guicursor', '')
+    api.nvim_set_option_value('guicursor', '', {})
     screen:expect(function()
       -- Empty 'guicursor' sets enabled=false.
       eq(false, screen._cursor_style_enabled)
@@ -319,4 +378,37 @@ describe('ui/cursor', function()
     end)
   end)
 
+  it(':sleep does not hide cursor when sleeping', function()
+    n.feed(':sleep 100m | echo 42\n')
+    screen:expect({
+      grid = [[
+      ^                         |
+      {1:~                        }|*3
+      :sleep 100m | echo 42    |
+    ]],
+      timeout = 100,
+    })
+    screen:expect([[
+      ^                         |
+      {1:~                        }|*3
+      42                       |
+    ]])
+  end)
+
+  it(':sleep! hides cursor when sleeping', function()
+    n.feed(':sleep! 100m | echo 42\n')
+    screen:expect({
+      grid = [[
+                               |
+      {1:~                        }|*3
+      :sleep! 100m | echo 42   |
+    ]],
+      timeout = 100,
+    })
+    screen:expect([[
+      ^                         |
+      {1:~                        }|*3
+      42                       |
+    ]])
+  end)
 end)

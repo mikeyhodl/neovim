@@ -1,11 +1,13 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear = helpers.clear
-local command = helpers.command
-local funcs = helpers.funcs
-local feed = helpers.feed
-local expect = helpers.expect
-local eq = helpers.eq
-local eval = helpers.eval
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear = n.clear
+local command = n.command
+local fn = n.fn
+local feed = n.feed
+local expect = n.expect
+local eq = t.eq
+local eval = n.eval
 
 before_each(clear)
 
@@ -29,10 +31,10 @@ describe(':normal!', function()
   it('can stop Visual mode without closing cmdwin vim-patch:9.0.0234', function()
     feed('q:')
     feed('v')
-    eq('v', funcs.mode(1))
-    eq(':', funcs.getcmdwintype())
+    eq('v', fn.mode(1))
+    eq(':', fn.getcmdwintype())
     command('normal! \027')
-    eq('n', funcs.mode(1))
-    eq(':', funcs.getcmdwintype())
+    eq('n', fn.mode(1))
+    eq(':', fn.getcmdwintype())
   end)
 end)

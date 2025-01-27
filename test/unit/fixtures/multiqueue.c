@@ -1,19 +1,17 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
-#include <string.h>
 #include <stdlib.h>
-#include "nvim/event/multiqueue.h"
+#include <string.h>
+
 #include "multiqueue.h"
 
+#include "nvim/event/multiqueue.h"
 
-void ut_multiqueue_put(MultiQueue *this, const char *str)
+void ut_multiqueue_put(MultiQueue *self, const char *str)
 {
-  multiqueue_put(this, NULL, 1, str);
+  multiqueue_put(self, NULL, (void *)str);
 }
 
-const char *ut_multiqueue_get(MultiQueue *this)
+const char *ut_multiqueue_get(MultiQueue *self)
 {
-  Event event = multiqueue_get(this);
+  Event event = multiqueue_get(self);
   return event.argv[0];
 }

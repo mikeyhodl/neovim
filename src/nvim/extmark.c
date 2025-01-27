@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 // Implements extended marks for plugins. Marks sit in a MarkTree
 // datastructure which provides both efficient mark insertations/lookups
 // and adjustment to text changes. See marktree.c for more details.
@@ -29,132 +26,81 @@
 // code for redrawing the line with the deleted decoration.
 
 #include <assert.h>
+#include <stddef.h>
 
-#include "klib/kbtree.h"
-#include "nvim/api/extmark.h"
-#include "nvim/buffer.h"
+#include "nvim/api/private/defs.h"
+#include "nvim/buffer_defs.h"
 #include "nvim/buffer_updates.h"
-#include "nvim/charset.h"
 #include "nvim/decoration.h"
+#include "nvim/decoration_defs.h"
 #include "nvim/extmark.h"
+#include "nvim/extmark_defs.h"
 #include "nvim/globals.h"
-#include "nvim/map.h"
+#include "nvim/map_defs.h"
+#include "nvim/marktree.h"
 #include "nvim/memline.h"
-#include "nvim/pos.h"
+#include "nvim/memory.h"
+#include "nvim/pos_defs.h"
+#include "nvim/types_defs.h"
 #include "nvim/undo.h"
-#include "nvim/vim.h"
+#include "nvim/undo_defs.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "extmark.c.generated.h"
 #endif
 
-static uint32_t *buf_ns_ref(buf_T *buf, uint32_t ns_id, bool put)
-{
-  return map_ref(uint32_t, uint32_t)(buf->b_extmark_ns, ns_id, put);
-}
-
 /// Create or update an extmark
 ///
 /// must not be used during iteration!
 void extmark_set(buf_T *buf, uint32_t ns_id, uint32_t *idp, int row, colnr_T col, int end_row,
-                 colnr_T end_col, Decoration *decor, bool right_gravity, bool end_right_gravity,
-                 ExtmarkOp op)
+                 colnr_T end_col, DecorInline decor, uint16_t decor_flags, bool right_gravity,
+                 bool end_right_gravity, bool no_undo, bool invalidate, Error *err)
 {
-  uint32_t *ns = buf_ns_ref(buf, ns_id, true);
+  uint32_t *ns = map_put_ref(uint32_t, uint32_t)(buf->b_extmark_ns, ns_id, NULL, NULL);
   uint32_t id = idp ? *idp : 0;
-  bool decor_full = false;
 
-  uint8_t decor_level = kDecorLevelNone;  // no decor
-  if (decor) {
-    if (kv_size(decor->virt_text)
-        || kv_size(decor->virt_lines)
-        || decor->conceal
-        || decor_has_sign(decor)
-        || decor->ui_watched
-        || decor->spell) {
-      decor_full = true;
-      decor = xmemdup(decor, sizeof *decor);
-    }
-    decor_level = kDecorLevelVisible;  // decor affects redraw
-    if (kv_size(decor->virt_lines)) {
-      decor_level = kDecorLevelVirtLine;  // decor affects horizontal size
-    }
-  }
-
+  uint16_t flags = mt_flags(right_gravity, no_undo, invalidate, decor.ext) | decor_flags;
   if (id == 0) {
     id = ++*ns;
   } else {
     MarkTreeIter itr[1] = { 0 };
-    mtkey_t old_mark = marktree_lookup_ns(buf->b_marktree, ns_id, id, false, itr);
+    MTKey old_mark = marktree_lookup_ns(buf->b_marktree, ns_id, id, false, itr);
     if (old_mark.id) {
       if (mt_paired(old_mark) || end_row > -1) {
-        extmark_del(buf, ns_id, id);
+        extmark_del_id(buf, ns_id, id);
       } else {
-        // TODO(bfredl): we need to do more if "revising" a decoration mark.
-        assert(itr->node);
+        assert(marktree_itr_valid(itr));
         if (old_mark.pos.row == row && old_mark.pos.col == col) {
-          if (marktree_decor_level(old_mark) > kDecorLevelNone) {
-            decor_remove(buf, row, row, old_mark.decor_full);
-            old_mark.decor_full = NULL;
+          // not paired: we can revise in place
+          if (!mt_invalid(old_mark) && mt_decor_any(old_mark)) {
+            mt_itr_rawkey(itr).flags &= (uint16_t) ~MT_FLAG_EXTERNAL_MASK;
+            buf_decor_remove(buf, row, row, col, mt_decor(old_mark), true);
           }
-          old_mark.flags = 0;
-          if (decor_full) {
-            old_mark.decor_full = decor;
-          } else if (decor) {
-            old_mark.hl_id = decor->hl_id;
-            // Workaround: the gcc compiler of functionaltest-lua build
-            // apparently incapable of handling basic integer constants.
-            // This can be underanged as soon as we bump minimal gcc version.
-            old_mark.flags = (uint16_t)(old_mark.flags
-                                        | (decor->hl_eol ? (uint16_t)MT_FLAG_HL_EOL : (uint16_t)0));
-            old_mark.priority = decor->priority;
-          }
-          marktree_revise(buf->b_marktree, itr, decor_level, old_mark);
+          mt_itr_rawkey(itr).flags |= flags;
+          mt_itr_rawkey(itr).decor_data = decor.data;
+          marktree_revise_meta(buf->b_marktree, itr, old_mark);
           goto revised;
         }
-        decor_remove(buf, old_mark.pos.row, old_mark.pos.row, old_mark.decor_full);
         marktree_del_itr(buf->b_marktree, itr, false);
+        if (!mt_invalid(old_mark)) {
+          buf_decor_remove(buf, old_mark.pos.row, old_mark.pos.row, old_mark.pos.col,
+                           mt_decor(old_mark), true);
+        }
       }
     } else {
       *ns = MAX(*ns, id);
     }
   }
 
-  mtkey_t mark = { { row, col }, ns_id, id, 0,
-                   mt_flags(right_gravity, decor_level), 0, NULL };
-  if (decor_full) {
-    mark.decor_full = decor;
-  } else if (decor) {
-    mark.hl_id = decor->hl_id;
-    // workaround: see above
-    mark.flags = (uint16_t)(mark.flags | (decor->hl_eol ? (uint16_t)MT_FLAG_HL_EOL : (uint16_t)0));
-    mark.priority = decor->priority;
-  }
+  MTKey mark = { { row, col }, ns_id, id, flags, decor.data };
 
   marktree_put(buf->b_marktree, mark, end_row, end_col, end_right_gravity);
+  decor_state_invalidate(buf);
 
 revised:
-  if (op != kExtmarkNoUndo) {
-    // TODO(bfredl): this doesn't cover all the cases and probably shouldn't
-    // be done "prematurely". Any movement in undo history might necessitate
-    // adding new marks to old undo headers. add a test case for this (doesn't
-    // fail extmark_spec.lua, and it should)
-    uint64_t mark_id = mt_lookup_id(ns_id, id, false);
-    u_extmark_set(buf, mark_id, row, col);
-  }
-
-  if (decor) {
-    if (kv_size(decor->virt_lines)) {
-      buf->b_virt_line_blocks++;
-    }
-    if (decor_has_sign(decor)) {
-      buf->b_signs++;
-    }
-    if (decor->sign_text) {
-      // TODO(lewis6991): smarter invalidation
-      buf_signcols_add_check(buf, NULL);
-    }
-    decor_redraw(buf, row, end_row > -1 ? end_row : row, decor);
+  if (decor_flags || decor.ext) {
+    buf_put_decor(buf, decor, row, end_row > -1 ? end_row : row);
+    decor_redraw(buf, row, end_row > -1 ? end_row : row, col, decor);
   }
 
   if (idp) {
@@ -162,49 +108,88 @@ revised:
   }
 }
 
-static bool extmark_setraw(buf_T *buf, uint64_t mark, int row, colnr_T col)
+static void extmark_setraw(buf_T *buf, uint64_t mark, int row, colnr_T col, bool invalid)
 {
   MarkTreeIter itr[1] = { 0 };
-  mtkey_t key = marktree_lookup(buf->b_marktree, mark, itr);
-  if (key.pos.row == -1) {
-    return false;
+  MTKey key = marktree_lookup(buf->b_marktree, mark, itr);
+  bool move = key.pos.row != row || key.pos.col != col;
+  if (key.pos.row < 0 || (!move && !invalid)) {
+    return;  // Mark was deleted or no change needed
   }
 
-  if (key.pos.row == row && key.pos.col == col) {
-    return true;
+  // Only the position before undo needs to be redrawn here,
+  // as the position after undo should be marked as changed.
+  if (!invalid && mt_decor_any(key) && key.pos.row != row) {
+    decor_redraw(buf, key.pos.row, key.pos.row, key.pos.col, mt_decor(key));
   }
 
-  marktree_move(buf->b_marktree, itr, row, col);
-  return true;
+  int row1 = 0;
+  int row2 = 0;
+  MarkTreeIter altitr[1] = { *itr };
+  MTKey alt = marktree_get_alt(buf->b_marktree, key, altitr);
+
+  if (invalid) {
+    mt_itr_rawkey(itr).flags &= (uint16_t) ~MT_FLAG_INVALID;
+    mt_itr_rawkey(altitr).flags &= (uint16_t) ~MT_FLAG_INVALID;
+    marktree_revise_meta(buf->b_marktree, mt_end(key) ? altitr : itr, mt_end(key) ? alt : key);
+  } else if (!mt_invalid(key) && key.flags & MT_FLAG_DECOR_SIGNTEXT && buf->b_signcols.autom) {
+    row1 = MIN(alt.pos.row, MIN(key.pos.row, row));
+    row2 = MAX(alt.pos.row, MAX(key.pos.row, row));
+    buf_signcols_count_range(buf, row1, row2, 0, kTrue);
+  }
+
+  if (move) {
+    marktree_move(buf->b_marktree, itr, row, col);
+  }
+
+  if (invalid) {
+    buf_put_decor(buf, mt_decor(key), MIN(row, key.pos.row), MAX(row, key.pos.row));
+  } else if (!mt_invalid(key) && key.flags & MT_FLAG_DECOR_SIGNTEXT && buf->b_signcols.autom) {
+    buf_signcols_count_range(buf, row1, row2, 0, kNone);
+  }
 }
 
-/// Remove an extmark
+/// Remove an extmark in "ns_id" by "id"
 ///
-/// @return  0 on missing id
-bool extmark_del(buf_T *buf, uint32_t ns_id, uint32_t id)
+/// @return false on missing id
+bool extmark_del_id(buf_T *buf, uint32_t ns_id, uint32_t id)
 {
   MarkTreeIter itr[1] = { 0 };
-  mtkey_t key = marktree_lookup_ns(buf->b_marktree, ns_id, id, false, itr);
-  if (!key.id) {
-    return false;
+  MTKey key = marktree_lookup_ns(buf->b_marktree, ns_id, id, false, itr);
+  if (key.id) {
+    extmark_del(buf, itr, key, false);
   }
+
+  return key.id > 0;
+}
+
+/// Remove a (paired) extmark "key" pointed to by "itr"
+void extmark_del(buf_T *buf, MarkTreeIter *itr, MTKey key, bool restore)
+{
   assert(key.pos.row >= 0);
-  marktree_del_itr(buf->b_marktree, itr, false);
 
-  mtkey_t key2 = key;
-
-  if (mt_paired(key)) {
-    key2 = marktree_lookup_ns(buf->b_marktree, ns_id, id, true, itr);
+  MTKey key2 = key;
+  uint64_t other = marktree_del_itr(buf->b_marktree, itr, false);
+  if (other) {
+    key2 = marktree_lookup(buf->b_marktree, other, itr);
     assert(key2.pos.row >= 0);
     marktree_del_itr(buf->b_marktree, itr, false);
+    if (restore) {
+      marktree_itr_get(buf->b_marktree, key.pos.row, key.pos.col, itr);
+    }
   }
 
-  if (marktree_decor_level(key) > kDecorLevelNone) {
-    decor_remove(buf, key.pos.row, key2.pos.row, key.decor_full);
+  if (mt_decor_any(key)) {
+    if (mt_invalid(key)) {
+      decor_free(mt_decor(key));
+    } else {
+      buf_decor_remove(buf, key.pos.row, key2.pos.row, key.pos.col, mt_decor(key), true);
+    }
   }
+
+  decor_state_invalidate(buf);
 
   // TODO(bfredl): delete it from current undo header, opportunistically?
-  return true;
 }
 
 /// Free extmarks in a ns between lines
@@ -215,80 +200,53 @@ bool extmark_clear(buf_T *buf, uint32_t ns_id, int l_row, colnr_T l_col, int u_r
     return false;
   }
 
-  bool marks_cleared = false;
-
   bool all_ns = (ns_id == 0);
   uint32_t *ns = NULL;
   if (!all_ns) {
-    ns = buf_ns_ref(buf, ns_id, false);
+    ns = map_ref(uint32_t, uint32_t)(buf->b_extmark_ns, ns_id, NULL);
     if (!ns) {
       // nothing to do
       return false;
     }
   }
 
-  // the value is either zero or the lnum (row+1) if highlight was present.
-  static Map(uint64_t, ssize_t) delete_set = MAP_INIT;
-  typedef struct { int row1; } DecorItem;
-  static kvec_t(DecorItem) decors;
+  bool marks_cleared_any = false;
+  bool marks_cleared_all = l_row == 0 && l_col == 0;
 
   MarkTreeIter itr[1] = { 0 };
   marktree_itr_get(buf->b_marktree, l_row, l_col, itr);
   while (true) {
-    mtkey_t mark = marktree_itr_current(itr);
+    MTKey mark = marktree_itr_current(itr);
     if (mark.pos.row < 0
         || mark.pos.row > u_row
         || (mark.pos.row == u_row && mark.pos.col > u_col)) {
+      if (mark.pos.row >= 0) {
+        marks_cleared_all = false;
+      }
       break;
     }
-    ssize_t *del_status = map_ref(uint64_t, ssize_t)(&delete_set, mt_lookup_key(mark),
-                                                     false);
-    if (del_status) {
-      marktree_del_itr(buf->b_marktree, itr, false);
-      if (*del_status >= 0) {  // we had a decor_id
-        DecorItem it = kv_A(decors, *del_status);
-        decor_remove(buf, it.row1, mark.pos.row, mark.decor_full);
-      }
-      map_del(uint64_t, ssize_t)(&delete_set, mt_lookup_key(mark));
-      continue;
-    }
-
-    assert(mark.ns > 0 && mark.id > 0);
     if (mark.ns == ns_id || all_ns) {
-      marks_cleared = true;
-      if (mt_paired(mark)) {
-        uint64_t other = mt_lookup_id(mark.ns, mark.id, !mt_end(mark));
-        ssize_t decor_id = -1;
-        if (marktree_decor_level(mark) > kDecorLevelNone) {
-          // Save the decoration and the first pos. Clear the decoration
-          // later when we know the full range.
-          decor_id = (ssize_t)kv_size(decors);
-          kv_push(decors,
-                  ((DecorItem) { .row1 = mark.pos.row }));
-        }
-        map_put(uint64_t, ssize_t)(&delete_set, other, decor_id);
-      } else if (mark.decor_full) {
-        decor_remove(buf, mark.pos.row, mark.pos.row, mark.decor_full);
-      }
-      marktree_del_itr(buf->b_marktree, itr, false);
+      marks_cleared_any = true;
+      extmark_del(buf, itr, mark, true);
     } else {
       marktree_itr_next(buf->b_marktree, itr);
     }
   }
-  uint64_t id;
-  ssize_t decor_id;
-  map_foreach(&delete_set, id, decor_id, {
-    mtkey_t mark = marktree_lookup(buf->b_marktree, id, itr);
-    assert(itr->node);
-    marktree_del_itr(buf->b_marktree, itr, false);
-    if (decor_id >= 0) {
-      DecorItem it = kv_A(decors, decor_id);
-      decor_remove(buf, it.row1, mark.pos.row, mark.decor_full);
+
+  if (marks_cleared_all) {
+    if (all_ns) {
+      map_destroy(uint32_t, buf->b_extmark_ns);
+      *buf->b_extmark_ns = (Map(uint32_t, uint32_t)) MAP_INIT;
+    } else {
+      map_del(uint32_t, uint32_t)(buf->b_extmark_ns, ns_id, NULL);
     }
-  });
-  map_clear(uint64_t, ssize_t)(&delete_set);
-  kv_size(decors) = 0;
-  return marks_cleared;
+  }
+
+  if (marks_cleared_any) {
+    decor_state_invalidate(buf);
+  }
+
+  return marks_cleared_any;
 }
 
 /// @return  the position of marks between a range,
@@ -296,19 +254,34 @@ bool extmark_clear(buf_T *buf, uint32_t ns_id, int l_row, colnr_T l_col, int u_r
 ///
 /// if upper_lnum or upper_col are negative the buffer
 /// will be searched to the start, or end
-/// dir can be set to control the order of the array
-/// amount = amount of marks to find or -1 for all
+/// reverse can be set to control the order of the array
+/// amount = amount of marks to find or INT64_MAX for all
 ExtmarkInfoArray extmark_get(buf_T *buf, uint32_t ns_id, int l_row, colnr_T l_col, int u_row,
-                             colnr_T u_col, int64_t amount, bool reverse)
+                             colnr_T u_col, int64_t amount, bool reverse, ExtmarkType type_filter,
+                             bool overlap)
 {
   ExtmarkInfoArray array = KV_INITIAL_VALUE;
   MarkTreeIter itr[1];
-  // Find all the marks
-  marktree_itr_get_ext(buf->b_marktree, (mtpos_t){ l_row, l_col },
-                       itr, reverse, false, NULL);
+
+  if (overlap) {
+    // Find all the marks overlapping the start position
+    if (!marktree_itr_get_overlap(buf->b_marktree, l_row, l_col, itr)) {
+      return array;
+    }
+
+    MTPair pair;
+    while (marktree_itr_step_overlap(buf->b_marktree, itr, &pair)) {
+      push_mark(&array, ns_id, type_filter, pair);
+    }
+  } else {
+    // Find all the marks beginning with the start position
+    marktree_itr_get_ext(buf->b_marktree, MTPos(l_row, l_col),
+                         itr, reverse, false, NULL, NULL);
+  }
+
   int order = reverse ? -1 : 1;
   while ((int64_t)kv_size(array) < amount) {
-    mtkey_t mark = marktree_itr_current(itr);
+    MTKey mark = marktree_itr_current(itr);
     if (mark.pos.row < 0
         || (mark.pos.row - u_row) * order > 0
         || (mark.pos.row == u_row && (mark.pos.col - u_col) * order > 0)) {
@@ -318,17 +291,8 @@ ExtmarkInfoArray extmark_get(buf_T *buf, uint32_t ns_id, int l_row, colnr_T l_co
       goto next_mark;
     }
 
-    if (mark.ns == ns_id) {
-      mtkey_t end = marktree_get_alt(buf->b_marktree, mark, NULL);
-      kv_push(array, ((ExtmarkInfo) { .ns_id = mark.ns,
-                                      .mark_id = mark.id,
-                                      .row = mark.pos.row, .col = mark.pos.col,
-                                      .end_row = end.pos.row,
-                                      .end_col = end.pos.col,
-                                      .right_gravity = mt_right(mark),
-                                      .end_right_gravity = mt_right(end),
-                                      .decor = get_decor(mark) }));
-    }
+    MTKey end = marktree_get_alt(buf->b_marktree, mark, NULL);
+    push_mark(&array, ns_id, type_filter, mtpair_from(mark, end));
 next_mark:
     if (reverse) {
       marktree_itr_prev(buf->b_marktree, itr);
@@ -339,48 +303,52 @@ next_mark:
   return array;
 }
 
-/// Lookup an extmark by id
-ExtmarkInfo extmark_from_id(buf_T *buf, uint32_t ns_id, uint32_t id)
+static void push_mark(ExtmarkInfoArray *array, uint32_t ns_id, ExtmarkType type_filter, MTPair mark)
 {
-  ExtmarkInfo ret = { 0, 0, -1, -1, -1, -1, false, false, DECORATION_INIT };
-  mtkey_t mark = marktree_lookup_ns(buf->b_marktree, ns_id, id, false, NULL);
+  if (!(ns_id == UINT32_MAX || mark.start.ns == ns_id)) {
+    return;
+  }
+  if (type_filter != kExtmarkNone) {
+    if (!mt_decor_any(mark.start)) {
+      return;
+    }
+    uint16_t type_flags = decor_type_flags(mt_decor(mark.start));
+
+    if (!(type_flags & type_filter)) {
+      return;
+    }
+  }
+
+  kv_push(*array, mark);
+}
+
+/// Lookup an extmark by id
+MTPair extmark_from_id(buf_T *buf, uint32_t ns_id, uint32_t id)
+{
+  MTKey mark = marktree_lookup_ns(buf->b_marktree, ns_id, id, false, NULL);
   if (!mark.id) {
-    return ret;
+    return mtpair_from(mark, mark);  // invalid
   }
   assert(mark.pos.row >= 0);
-  mtkey_t end = marktree_get_alt(buf->b_marktree, mark, NULL);
+  MTKey end = marktree_get_alt(buf->b_marktree, mark, NULL);
 
-  ret.ns_id = ns_id;
-  ret.mark_id = id;
-  ret.row = mark.pos.row;
-  ret.col = mark.pos.col;
-  ret.end_row = end.pos.row;
-  ret.end_col = end.pos.col;
-  ret.right_gravity = mt_right(mark);
-  ret.end_right_gravity = mt_right(end);
-  ret.decor = get_decor(mark);
-
-  return ret;
+  return mtpair_from(mark, end);
 }
 
 /// free extmarks from the buffer
 void extmark_free_all(buf_T *buf)
 {
-  if (!map_size(buf->b_extmark_ns)) {
-    return;
-  }
-
   MarkTreeIter itr[1] = { 0 };
   marktree_itr_get(buf->b_marktree, 0, 0, itr);
   while (true) {
-    mtkey_t mark = marktree_itr_current(itr);
+    MTKey mark = marktree_itr_current(itr);
     if (mark.pos.row < 0) {
       break;
     }
 
-    // don't free mark.decor_full twice for a paired mark.
+    // don't free mark.decor twice for a paired mark.
     if (!(mt_paired(mark) && mt_end(mark))) {
-      decor_free(mark.decor_full);
+      decor_free(mt_decor(mark));
     }
 
     marktree_itr_next(buf->b_marktree, itr);
@@ -388,63 +356,81 @@ void extmark_free_all(buf_T *buf)
 
   marktree_clear(buf->b_marktree);
 
-  map_destroy(uint32_t, uint32_t)(buf->b_extmark_ns);
-  map_init(uint32_t, uint32_t, buf->b_extmark_ns);
+  buf->b_signcols.max = 0;
+  CLEAR_FIELD(buf->b_signcols.count);
+
+  map_destroy(uint32_t, buf->b_extmark_ns);
+  *buf->b_extmark_ns = (Map(uint32_t, uint32_t)) MAP_INIT;
 }
 
-/// Save info for undo/redo of set marks
-static void u_extmark_set(buf_T *buf, uint64_t mark, int row, colnr_T col)
-{
-  u_header_T *uhp = u_force_get_undo_header(buf);
-  if (!uhp) {
-    return;
-  }
-
-  ExtmarkSavePos pos;
-  pos.mark = mark;
-  pos.old_row = -1;
-  pos.old_col = -1;
-  pos.row = row;
-  pos.col = col;
-
-  ExtmarkUndoObject undo = { .type = kExtmarkSavePos,
-                             .data.savepos = pos };
-
-  kv_push(uhp->uh_extmark, undo);
-}
-
-/// copy extmarks data between range
+/// invalidate extmarks between range and copy to undo header
 ///
-/// useful when we cannot simply reverse the operation. This will do nothing on
-/// redo, enforces correct position when undo.
-void u_extmark_copy(buf_T *buf, int l_row, colnr_T l_col, int u_row, colnr_T u_col)
+/// copying is useful when we cannot simply reverse the operation. This will do
+/// nothing on redo, enforces correct position when undo.
+void extmark_splice_delete(buf_T *buf, int l_row, colnr_T l_col, int u_row, colnr_T u_col,
+                           extmark_undo_vec_t *uvp, bool only_copy, ExtmarkOp op)
 {
-  u_header_T *uhp = u_force_get_undo_header(buf);
-  if (!uhp) {
-    return;
-  }
-
+  MarkTreeIter itr[1] = { 0 };
   ExtmarkUndoObject undo;
 
-  MarkTreeIter itr[1] = { 0 };
   marktree_itr_get(buf->b_marktree, (int32_t)l_row, l_col, itr);
   while (true) {
-    mtkey_t mark = marktree_itr_current(itr);
-    if (mark.pos.row < 0
-        || mark.pos.row > u_row
-        || (mark.pos.row == u_row && mark.pos.col > u_col)) {
+    MTKey mark = marktree_itr_current(itr);
+    if (mark.pos.row < 0 || mark.pos.row > u_row) {
       break;
     }
-    ExtmarkSavePos pos;
-    pos.mark = mt_lookup_key(mark);
-    pos.old_row = mark.pos.row;
-    pos.old_col = mark.pos.col;
-    pos.row = -1;
-    pos.col = -1;
 
-    undo.data.savepos = pos;
-    undo.type = kExtmarkSavePos;
-    kv_push(uhp->uh_extmark, undo);
+    bool copy = true;
+    // No need to copy left gravity marks at the beginning of the range,
+    // and right gravity marks at the end of the range, unless invalidated.
+    if (mark.pos.row == l_row && mark.pos.col - !mt_right(mark) < l_col) {
+      copy = false;
+    } else if (mark.pos.row == u_row) {
+      if (mark.pos.col > u_col + 1) {
+        break;
+      } else if (mark.pos.col + mt_right(mark) > u_col) {
+        copy = false;
+      }
+    }
+
+    bool invalidated = false;
+    // Invalidate/delete mark
+    if (!only_copy && !mt_invalid(mark) && mt_invalidate(mark) && !mt_end(mark)) {
+      MarkTreeIter enditr[1] = { *itr };
+      MTPos endpos = marktree_get_altpos(buf->b_marktree, mark, enditr);
+      // Invalidate unpaired marks in deleted lines and paired marks whose entire
+      // range has been deleted.
+      if ((!mt_paired(mark) && mark.pos.row < u_row)
+          || (mt_paired(mark)
+              && (endpos.col <= u_col || (!u_col && endpos.row == mark.pos.row))
+              && mark.pos.col >= l_col
+              && mark.pos.row >= l_row && endpos.row <= u_row - (u_col ? 0 : 1))) {
+        if (mt_no_undo(mark)) {
+          extmark_del(buf, itr, mark, true);
+          continue;
+        } else {
+          copy = true;
+          invalidated = true;
+          mt_itr_rawkey(itr).flags |= MT_FLAG_INVALID;
+          mt_itr_rawkey(enditr).flags |= MT_FLAG_INVALID;
+          marktree_revise_meta(buf->b_marktree, itr, mark);
+          buf_decor_remove(buf, mark.pos.row, endpos.row, mark.pos.col, mt_decor(mark), false);
+        }
+      }
+    }
+
+    // Push mark to undo header
+    if (copy && (only_copy || (uvp != NULL && op == kExtmarkUndo && !mt_no_undo(mark)))) {
+      ExtmarkSavePos pos = {
+        .mark = mt_lookup_key(mark),
+        .invalidated = invalidated,
+        .old_row = mark.pos.row,
+        .old_col = mark.pos.col
+      };
+      undo.data.savepos = pos;
+      undo.type = kExtmarkSavePos;
+      kv_push(*uvp, undo);
+    }
 
     marktree_itr_next(buf->b_marktree, itr);
   }
@@ -473,16 +459,10 @@ void extmark_apply_undo(ExtmarkUndoObject undo_info, bool undo)
     // kExtmarkSavePos
   } else if (undo_info.type == kExtmarkSavePos) {
     ExtmarkSavePos pos = undo_info.data.savepos;
-    if (undo) {
-      if (pos.old_row >= 0) {
-        extmark_setraw(curbuf, pos.mark, pos.old_row, pos.old_col);
-      }
-      // Redo
-    } else {
-      if (pos.row >= 0) {
-        extmark_setraw(curbuf, pos.mark, pos.row, pos.col);
-      }
+    if (undo && pos.old_row >= 0) {
+      extmark_setraw(curbuf, pos.mark, pos.old_row, pos.old_col, pos.invalidated);
     }
+    // No Redo since kExtmarkSplice will move marks back
   } else if (undo_info.type == kExtmarkMove) {
     ExtmarkMove move = undo_info.data.move;
     if (undo) {
@@ -509,13 +489,14 @@ void extmark_adjust(buf_T *buf, linenr_T line1, linenr_T line2, linenr_T amount,
     return;
   }
   bcount_t start_byte = ml_find_line_or_offset(buf, line1, NULL, true);
-  bcount_t old_byte = 0, new_byte = 0;
-  int old_row, new_row;
+  bcount_t old_byte = 0;
+  bcount_t new_byte = 0;
+  int old_row;
+  int new_row;
   if (amount == MAXLNUM) {
     old_row = line2 - line1 + 1;
     // TODO(bfredl): ej kasta?
     old_byte = (bcount_t)buf->deleted_bytes2;
-
     new_row = amount_after + old_row;
   } else {
     // A region is either deleted (amount == MAXLNUM) or
@@ -556,7 +537,7 @@ void extmark_splice(buf_T *buf, int start_row, colnr_T start_col, int old_row, c
                     bcount_t old_byte, int new_row, colnr_T new_col, bcount_t new_byte,
                     ExtmarkOp undo)
 {
-  long offset = ml_find_line_or_offset(buf, start_row + 1, NULL, true);
+  int offset = ml_find_line_or_offset(buf, start_row + 1, NULL, true);
 
   // On empty buffers, when editing the first line, the line is buffered,
   // causing offset to be < 0. While the buffer is not actually empty, the
@@ -581,20 +562,29 @@ void extmark_splice_impl(buf_T *buf, int start_row, colnr_T start_col, bcount_t 
                           old_row, old_col, old_byte,
                           new_row, new_col, new_byte);
 
-  if (undo == kExtmarkUndo && (old_row > 0 || old_col > 0)) {
-    // Copy marks that would be effected by delete
-    // TODO(bfredl): Be "smart" about gravity here, left-gravity at the
-    // beginning and right-gravity at the end need not be preserved.
-    // Also be smart about marks that already have been saved (important for
-    // merge!)
+  if (old_row > 0 || old_col > 0) {
+    // Copy and invalidate marks that would be effected by delete
+    // TODO(bfredl): Be smart about marks that already have been
+    // saved (important for merge!)
     int end_row = start_row + old_row;
     int end_col = (old_row ? 0 : start_col) + old_col;
-    u_extmark_copy(buf, start_row, start_col, end_row, end_col);
+    u_header_T *uhp = u_force_get_undo_header(buf);
+    extmark_undo_vec_t *uvp = uhp ? &uhp->uh_extmark : NULL;
+    extmark_splice_delete(buf, start_row, start_col, end_row, end_col, uvp, false, undo);
+  }
+
+  // Remove signs inside edited region from "b_signcols.count", add after splicing.
+  if (old_row > 0 || new_row > 0) {
+    buf_signcols_count_range(buf, start_row, start_row + old_row, 0, kTrue);
   }
 
   marktree_splice(buf->b_marktree, (int32_t)start_row, start_col,
                   old_row, old_col,
                   new_row, new_col);
+
+  if (old_row > 0 || new_row > 0) {
+    buf_signcols_count_range(buf, start_row, start_row + new_row, 0, kNone);
+  }
 
   if (undo == kExtmarkUndo) {
     u_header_T *uhp = u_force_get_undo_header(buf);
@@ -674,9 +664,15 @@ void extmark_move_region(buf_T *buf, int start_row, colnr_T start_col, bcount_t 
                           extent_row, extent_col, extent_byte,
                           0, 0, 0);
 
+  int row1 = MIN(start_row, new_row);
+  int row2 = MAX(start_row, new_row) + extent_row;
+  buf_signcols_count_range(buf, row1, row2, 0, kTrue);
+
   marktree_move_region(buf->b_marktree, start_row, start_col,
                        extent_row, extent_col,
                        new_row, new_col);
+
+  buf_signcols_count_range(buf, row1, row2, 0, kNone);
 
   buf_updates_send_splice(buf, new_row, new_col, new_byte,
                           0, 0, 0,

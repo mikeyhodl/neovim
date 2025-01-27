@@ -1,12 +1,16 @@
 -- Insert-mode tests.
 
-local helpers = require('test.functional.helpers')(after_each)
-local clear, feed, insert = helpers.clear, helpers.feed, helpers.insert
-local expect = helpers.expect
-local command = helpers.command
-local eq = helpers.eq
-local eval = helpers.eval
-local curbuf_contents = helpers.curbuf_contents
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+local Screen = require('test.functional.ui.screen')
+
+local clear, feed, insert = n.clear, n.feed, n.insert
+local expect = n.expect
+local command = n.command
+local eq = t.eq
+local eval = n.eval
+local curbuf_contents = n.curbuf_contents
+local api = n.api
 
 describe('insert-mode', function()
   before_each(function()
@@ -47,6 +51,37 @@ describe('insert-mode', function()
       command("let @@ = 'påskägg'")
       feed('i<C-r>"')
       expect('påskägg')
+    end)
+
+    it('double quote is removed after hit-enter prompt #22609', function()
+      local screen = Screen.new(50, 6)
+      feed('i<C-R>')
+      screen:expect([[
+        {18:^"}                                                 |
+        {1:~                                                 }|*4
+        {5:-- INSERT --}                                      |
+      ]])
+      feed("=function('add')")
+      screen:expect([[
+        {18:"}                                                 |
+        {1:~                                                 }|*4
+        ={25:function}{16:(}{26:'add'}{16:)}^                                  |
+      ]])
+      feed('<CR>')
+      screen:expect([[
+        {18:"}                                                 |
+        {1:~                                                 }|
+        {3:                                                  }|
+        ={25:function}{16:(}{26:'add'}{16:)}                                  |
+        {9:E729: Using a Funcref as a String}                 |
+        {6:Press ENTER or type command to continue}^           |
+      ]])
+      feed('<CR>')
+      screen:expect([[
+        ^                                                  |
+        {1:~                                                 }|*4
+        {5:-- INSERT --}                                      |
+      ]])
     end)
   end)
 
@@ -140,5 +175,263 @@ describe('insert-mode', function()
   it('Ctrl-Shift-V supports entering unsimplified key notations', function()
     feed('i<C-S-V><C-J><C-S-V><C-@><C-S-V><C-[><C-S-V><C-S-M><C-S-V><M-C-I><C-S-V><C-D-J><Esc>')
     expect('<C-J><C-@><C-[><C-S-M><M-C-I><C-D-J>')
+  end)
+
+  it('multi-char mapping updates screen properly #25626', function()
+    local screen = Screen.new(60, 6)
+    command('vnew')
+    insert('foo\nfoo\nfoo')
+    command('wincmd w')
+    command('set timeoutlen=10000')
+    command('inoremap jk <Esc>')
+    feed('i<CR>βββ<Left><Left>j')
+    screen:expect {
+      grid = [[
+      foo                           │                             |
+      foo                           │β^jβ                          |
+      foo                           │{1:~                            }|
+      {1:~                             }│{1:~                            }|
+      {2:[No Name] [+]                  }{3:[No Name] [+]                }|
+      {5:-- INSERT --}                                                |
+    ]],
+    }
+    feed('k')
+    screen:expect {
+      grid = [[
+      foo                           │                             |
+      foo                           │^βββ                          |
+      foo                           │{1:~                            }|
+      {1:~                             }│{1:~                            }|
+      {2:[No Name] [+]                  }{3:[No Name] [+]                }|
+                                                                  |
+    ]],
+    }
+  end)
+
+  describe('backspace', function()
+    local function set_lines(line_b, line_e, ...)
+      api.nvim_buf_set_lines(0, line_b, line_e, true, { ... })
+    end
+    local function s(count)
+      return (' '):rep(count)
+    end
+
+    local function test_cols(expected_cols)
+      local cols = { { n.fn.col('.'), n.fn.virtcol('.') } }
+      for _ = 2, #expected_cols do
+        feed('<BS>')
+        table.insert(cols, { n.fn.col('.'), n.fn.virtcol('.') })
+      end
+      eq(expected_cols, cols)
+    end
+
+    it('works with tabs and spaces', function()
+      local _ = Screen.new(30, 2)
+      command('setl ts=4 sw=4')
+      set_lines(0, 1, '\t' .. s(4) .. '\t' .. s(9) .. '\t a')
+      feed('$i')
+      test_cols({
+        { 18, 26 },
+        { 17, 25 },
+        { 15, 21 },
+        { 11, 17 },
+        { 7, 13 },
+        { 6, 9 },
+        { 2, 5 },
+        { 1, 1 },
+      })
+    end)
+
+    it('works with varsofttabstop', function()
+      local _ = Screen.new(30, 2)
+      command('setl vsts=6,2,5,3')
+      set_lines(0, 1, 'a\t' .. s(4) .. '\t a')
+      feed('$i')
+      test_cols({
+        { 9, 18 },
+        { 8, 17 },
+        { 8, 14 },
+        { 3, 9 },
+        { 7, 7 },
+        { 2, 2 },
+        { 1, 1 },
+      })
+    end)
+
+    it('works with tab as ^I', function()
+      local _ = Screen.new(30, 2)
+      command('set list listchars=space:.')
+      command('setl ts=4 sw=4')
+      set_lines(0, 1, '\t' .. s(4) .. '\t' .. s(9) .. '\t a')
+      feed('$i')
+      test_cols({
+        { 18, 21 },
+        { 15, 17 },
+        { 11, 13 },
+        { 7, 9 },
+        { 4, 5 },
+        { 1, 1 },
+      })
+    end)
+
+    it('works in replace mode', function()
+      local _ = Screen.new(50, 2)
+      command('setl ts=8 sw=8 sts=8')
+      set_lines(0, 1, '\t' .. s(4) .. '\t' .. s(9) .. '\t a')
+      feed('$R')
+      test_cols({
+        { 18, 34 },
+        { 17, 33 },
+        { 15, 25 },
+        { 7, 17 },
+        { 2, 9 },
+        { 1, 8 }, -- last screen cell of first tab is at vcol 8
+      })
+    end)
+
+    it('works with breakindent', function()
+      local _ = Screen.new(17, 4)
+      command('setl ts=4 sw=4 bri briopt=min:5')
+      set_lines(0, 1, '\t' .. s(4) .. '\t' .. s(9) .. '\t a')
+      feed('$i')
+      test_cols({
+        { 18, 50 },
+        { 17, 49 },
+        { 15, 33 },
+        { 11, 17 },
+        { 7, 13 },
+        { 6, 9 },
+        { 2, 5 },
+        { 1, 1 },
+      })
+    end)
+
+    it('works with inline virtual text', function()
+      local _ = Screen.new(50, 2)
+      command('setl ts=4 sw=4')
+      set_lines(0, 1, '\t' .. s(4) .. '\t' .. s(9) .. '\t a')
+      local ns = api.nvim_create_namespace('')
+      local vt_opts = { virt_text = { { 'text' } }, virt_text_pos = 'inline' }
+      api.nvim_buf_set_extmark(0, ns, 0, 2, vt_opts)
+      feed('$i')
+      test_cols({
+        { 18, 30 },
+        { 17, 29 },
+        { 15, 25 },
+        { 11, 21 },
+        { 7, 17 },
+        { 6, 13 },
+        { 2, 9 },
+        { 1, 5 },
+      })
+    end)
+
+    it("works with 'revins'", function()
+      local _ = Screen.new(30, 3)
+      command('setl ts=4 sw=4 revins')
+      set_lines(0, 1, ('a'):rep(16), s(3) .. '\t' .. s(4) .. '\t a')
+      feed('j$i')
+      test_cols({
+        { 11, 14 },
+        { 10, 13 },
+        { 9, 9 },
+        { 5, 5 },
+        { 1, 1 },
+        { 1, 1 }, -- backspace on empty line does nothing
+      })
+      eq(2, api.nvim_win_get_cursor(0)[1])
+    end)
+  end)
+
+  it('backspace after replacing multibyte chars', function()
+    local screen = Screen.new(30, 3)
+    api.nvim_buf_set_lines(0, 0, -1, true, { 'test ȧ̟̜̝̅̚m̆̉̐̐̇̈ å' })
+    feed('^Rabcdefghi')
+    screen:expect([[
+      abcdefghi^                     |
+      {1:~                             }|
+      {5:-- REPLACE --}                 |
+    ]])
+
+    feed('<bs>')
+    screen:expect([[
+      abcdefgh^å                     |
+      {1:~                             }|
+      {5:-- REPLACE --}                 |
+    ]])
+
+    feed('<bs>')
+    screen:expect([[
+      abcdefg^ å                     |
+      {1:~                             }|
+      {5:-- REPLACE --}                 |
+    ]])
+
+    feed('<bs>')
+    screen:expect([[
+      abcdef^m̆̉̐̐̇̈ å                     |
+      {1:~                             }|
+      {5:-- REPLACE --}                 |
+    ]])
+
+    feed('<bs>')
+    screen:expect([[
+      abcde^ȧ̟̜̝̅̚m̆̉̐̐̇̈ å                     |
+      {1:~                             }|
+      {5:-- REPLACE --}                 |
+    ]])
+
+    feed('<bs>')
+    screen:expect([[
+      abcd^ ȧ̟̜̝̅̚m̆̉̐̐̇̈ å                     |
+      {1:~                             }|
+      {5:-- REPLACE --}                 |
+    ]])
+
+    feed('<esc>')
+
+    api.nvim_buf_set_lines(0, 0, -1, true, { 'wow 🧑‍🌾🏳️‍⚧️x' })
+    feed('^Rabcd')
+
+    screen:expect([[
+      abcd^🧑‍🌾🏳️‍⚧️x                     |
+      {1:~                             }|
+      {5:-- REPLACE --}                 |
+    ]])
+
+    feed('e')
+    screen:expect([[
+      abcde^🏳️‍⚧️x                      |
+      {1:~                             }|
+      {5:-- REPLACE --}                 |
+    ]])
+
+    feed('f')
+    screen:expect([[
+      abcdef^x                       |
+      {1:~                             }|
+      {5:-- REPLACE --}                 |
+    ]])
+
+    feed('<bs>')
+    screen:expect([[
+      abcde^🏳️‍⚧️x                      |
+      {1:~                             }|
+      {5:-- REPLACE --}                 |
+    ]])
+
+    feed('<bs>')
+    screen:expect([[
+      abcd^🧑‍🌾🏳️‍⚧️x                     |
+      {1:~                             }|
+      {5:-- REPLACE --}                 |
+    ]])
+
+    feed('<bs>')
+    screen:expect([[
+      abc^ 🧑‍🌾🏳️‍⚧️x                     |
+      {1:~                             }|
+      {5:-- REPLACE --}                 |
+    ]])
   end)
 end)

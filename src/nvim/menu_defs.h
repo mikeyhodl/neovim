@@ -1,7 +1,6 @@
-#ifndef NVIM_MENU_DEFS_H
-#define NVIM_MENU_DEFS_H
+#pragma once
 
-#include <stdbool.h>  // for bool
+#include <stdbool.h>
 
 /// Indices into vimmenu_T->strings[] and vimmenu_T->noremap[] for each mode
 /// \addtogroup MENU_INDEX
@@ -52,7 +51,7 @@ struct VimMenu {
   char *en_dname;             ///< NULL when "dname" untranslated
   int mnemonic;               ///< mnemonic key (after '&')
   char *actext;               ///< accelerator text (after TAB)
-  long priority;              ///< Menu order priority
+  int priority;               ///< Menu order priority
   char *strings[MENU_MODES];  ///< Mapped string for each mode
   int noremap[MENU_MODES];    ///< A \ref REMAP_VALUES flag for each mode
   bool silent[MENU_MODES];    ///< A silent flag for each mode
@@ -60,5 +59,3 @@ struct VimMenu {
   vimmenu_T *parent;          ///< Parent of menu
   vimmenu_T *next;            ///< Next item in menu
 };
-
-#endif  // NVIM_MENU_DEFS_H

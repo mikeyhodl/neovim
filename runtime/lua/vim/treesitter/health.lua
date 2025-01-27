@@ -1,32 +1,41 @@
 local M = {}
 local ts = vim.treesitter
-local health = require('vim.health')
-
---- Lists the parsers currently installed
----
----@return string[] list of parser files
-function M.list_parsers()
-  return vim.api.nvim_get_runtime_file('parser/*', true)
-end
+local health = vim.health
 
 --- Performs a healthcheck for treesitter integration
 function M.check()
-  local parsers = M.list_parsers()
+  health.start('Treesitter features')
 
-  health.report_info(string.format('Nvim runtime ABI version: %d', ts.language_version))
+  health.info(
+    string.format(
+      'Treesitter ABI support: min %d, max %d',
+      vim.treesitter.minimum_language_version,
+      ts.language_version
+    )
+  )
 
+  local can_wasm = vim._ts_add_language_from_wasm ~= nil
+  health.info(string.format('WASM parser support: %s', tostring(can_wasm)))
+
+  health.start('Treesitter parsers')
+  local parsers = vim.api.nvim_get_runtime_file('parser/*', true)
   for _, parser in pairs(parsers) do
     local parsername = vim.fn.fnamemodify(parser, ':t:r')
-    local is_loadable, ret = pcall(ts.language.require_language, parsername)
+    local is_loadable, err_or_nil = pcall(ts.language.add, parsername)
 
-    if not is_loadable or not ret then
-      health.report_error(
-        string.format('Parser "%s" failed to load (path: %s): %s', parsername, parser, ret or '?')
+    if not is_loadable then
+      health.error(
+        string.format(
+          'Parser "%s" failed to load (path: %s): %s',
+          parsername,
+          parser,
+          err_or_nil or '?'
+        )
       )
-    elseif ret then
-      local lang = ts.language.inspect_language(parsername)
-      health.report_ok(
-        string.format('Parser: %-10s ABI: %d, path: %s', parsername, lang._abi_version, parser)
+    else
+      local lang = ts.language.inspect(parsername)
+      health.ok(
+        string.format('Parser: %-20s ABI: %d, path: %s', parsername, lang._abi_version, parser)
       )
     end
   end

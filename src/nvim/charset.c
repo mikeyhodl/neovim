@@ -1,34 +1,35 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 /// @file charset.c
 ///
 /// Code related to character sets.
 
 #include <assert.h>
+#include <errno.h>
 #include <inttypes.h>
+#include <limits.h>
+#include <stdlib.h>
 #include <string.h>
-#include <wctype.h>
+#include <uv.h>
 
-#include "nvim/ascii.h"
+#include "auto/config.h"
+#include "klib/kvec.h"
+#include "nvim/ascii_defs.h"
+#include "nvim/buffer_defs.h"
 #include "nvim/charset.h"
 #include "nvim/cursor.h"
-#include "nvim/func_attr.h"
+#include "nvim/eval/typval_defs.h"
 #include "nvim/garray.h"
-#include "nvim/indent.h"
-#include "nvim/main.h"
-#include "nvim/mark.h"
+#include "nvim/garray_defs.h"
+#include "nvim/globals.h"
+#include "nvim/keycodes.h"
+#include "nvim/macros_defs.h"
 #include "nvim/mbyte.h"
-#include "nvim/memline.h"
 #include "nvim/memory.h"
-#include "nvim/move.h"
 #include "nvim/option.h"
-#include "nvim/os_unix.h"
 #include "nvim/path.h"
-#include "nvim/plines.h"
-#include "nvim/state.h"
+#include "nvim/pos_defs.h"
 #include "nvim/strings.h"
-#include "nvim/vim.h"
+#include "nvim/types_defs.h"
+#include "nvim/vim_defs.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "charset.c.generated.h"
@@ -46,7 +47,7 @@ static bool chartab_initialized = false;
   ((chartab)[(unsigned)(c) >> 6] & (1ull << ((c) & 0x3f)))
 
 // Table used below, see init_chartab() for an explanation
-static char_u g_chartab[256];
+static uint8_t g_chartab[256];
 
 // Flags for g_chartab[].
 #define CT_CELL_MASK  0x07  ///< mask: nr of display cells (1, 2 or 4)
@@ -85,22 +86,16 @@ int init_chartab(void)
 ///
 /// @return FAIL if 'iskeyword', 'isident', 'isfname' or 'isprint' option has
 /// an error, OK otherwise.
-int buf_init_chartab(buf_T *buf, int global)
+int buf_init_chartab(buf_T *buf, bool global)
 {
-  int c;
-  int c2;
-  int i;
-  bool tilde;
-  bool do_isalpha;
-
   if (global) {
     // Set the default size for printable characters:
     // From <Space> to '~' is 1 (printable), others are 2 (not printable).
     // This also inits all 'isident' and 'isfname' flags to false.
-    c = 0;
+    int c = 0;
 
     while (c < ' ') {
-      g_chartab[c++] = (dy_flags & DY_UHEX) ? 4 : 2;
+      g_chartab[c++] = (dy_flags & kOptDyFlagUhex) ? 4 : 2;
     }
 
     while (c <= '~') {
@@ -110,17 +105,11 @@ int buf_init_chartab(buf_T *buf, int global)
     while (c < 256) {
       if (c >= 0xa0) {
         // UTF-8: bytes 0xa0 - 0xff are printable (latin1)
-        g_chartab[c++] = CT_PRINT_CHAR + 1;
+        // Also assume that every multi-byte char is a filename character.
+        g_chartab[c++] = (CT_PRINT_CHAR | CT_FNAME_CHAR) + 1;
       } else {
         // the rest is unprintable by default
-        g_chartab[c++] = (dy_flags & DY_UHEX) ? 4 : 2;
-      }
-    }
-
-    // Assume that every multi-byte char is a filename character.
-    for (c = 1; c < 256; c++) {
-      if (c >= 0xa0) {
-        g_chartab[c] |= CT_FNAME_CHAR;
+        g_chartab[c++] = (dy_flags & kOptDyFlagUhex) ? 4 : 2;
       }
     }
   }
@@ -133,128 +122,146 @@ int buf_init_chartab(buf_T *buf, int global)
     SET_CHARTAB(buf, '-');
   }
 
-  // Walk through the 'isident', 'iskeyword', 'isfname' and 'isprint'
-  // options Each option is a list of characters, character numbers or
-  // ranges, separated by commas, e.g.: "200-210,x,#-178,-"
-  for (i = global ? 0 : 3; i <= 3; i++) {
-    const char_u *p;
+  // Walk through the 'isident', 'iskeyword', 'isfname' and 'isprint' options.
+  for (int i = global ? 0 : 3; i <= 3; i++) {
+    const char *p;
     if (i == 0) {
       // first round: 'isident'
-      p = (char_u *)p_isi;
+      p = p_isi;
     } else if (i == 1) {
       // second round: 'isprint'
-      p = (char_u *)p_isp;
+      p = p_isp;
     } else if (i == 2) {
       // third round: 'isfname'
-      p = (char_u *)p_isf;
+      p = p_isf;
     } else {  // i == 3
       // fourth round: 'iskeyword'
-      p = (char_u *)buf->b_p_isk;
+      p = buf->b_p_isk;
     }
-
-    while (*p) {
-      tilde = false;
-      do_isalpha = false;
-
-      if ((*p == '^') && (p[1] != NUL)) {
-        tilde = true;
-        p++;
-      }
-
-      if (ascii_isdigit(*p)) {
-        c = getdigits_int((char **)&p, true, 0);
-      } else {
-        c = mb_ptr2char_adv(&p);
-      }
-      c2 = -1;
-
-      if ((*p == '-') && (p[1] != NUL)) {
-        p++;
-
-        if (ascii_isdigit(*p)) {
-          c2 = getdigits_int((char **)&p, true, 0);
-        } else {
-          c2 = mb_ptr2char_adv(&p);
-        }
-      }
-
-      if ((c <= 0)
-          || (c >= 256)
-          || ((c2 < c) && (c2 != -1))
-          || (c2 >= 256)
-          || !((*p == NUL) || (*p == ','))) {
-        return FAIL;
-      }
-
-      if (c2 == -1) {  // not a range
-        // A single '@' (not "@-@"):
-        // Decide on letters being ID/printable/keyword chars with
-        // standard function isalpha(). This takes care of locale for
-        // single-byte characters).
-        if (c == '@') {
-          do_isalpha = true;
-          c = 1;
-          c2 = 255;
-        } else {
-          c2 = c;
-        }
-      }
-
-      while (c <= c2) {
-        // Use the MB_ functions here, because isalpha() doesn't
-        // work properly when 'encoding' is "latin1" and the locale is
-        // "C".
-        if (!do_isalpha
-            || mb_islower(c)
-            || mb_isupper(c)) {
-          if (i == 0) {
-            // (re)set ID flag
-            if (tilde) {
-              g_chartab[c] &= (uint8_t) ~CT_ID_CHAR;
-            } else {
-              g_chartab[c] |= CT_ID_CHAR;
-            }
-          } else if (i == 1) {
-            // (re)set printable
-            if (c < ' ' || c > '~') {
-              if (tilde) {
-                g_chartab[c] = (uint8_t)((g_chartab[c] & ~CT_CELL_MASK)
-                                         + ((dy_flags & DY_UHEX) ? 4 : 2));
-                g_chartab[c] &= (uint8_t) ~CT_PRINT_CHAR;
-              } else {
-                g_chartab[c] = (uint8_t)((g_chartab[c] & ~CT_CELL_MASK) + 1);
-                g_chartab[c] |= CT_PRINT_CHAR;
-              }
-            }
-          } else if (i == 2) {
-            // (re)set fname flag
-            if (tilde) {
-              g_chartab[c] &= (uint8_t) ~CT_FNAME_CHAR;
-            } else {
-              g_chartab[c] |= CT_FNAME_CHAR;
-            }
-          } else {  // i == 3
-            // (re)set keyword flag
-            if (tilde) {
-              RESET_CHARTAB(buf, c);
-            } else {
-              SET_CHARTAB(buf, c);
-            }
-          }
-        }
-        c++;
-      }
-
-      c = *p;
-      p = (char_u *)skip_to_option_part((char *)p);
-
-      if ((c == ',') && (*p == NUL)) {
-        // Trailing comma is not allowed.
-        return FAIL;
-      }
+    if (parse_isopt(p, buf, false) == FAIL) {
+      return FAIL;
     }
   }
+
   chartab_initialized = true;
+  return OK;
+}
+
+/// Checks the format for the option settings 'iskeyword', 'isident', 'isfname'
+/// or 'isprint'.
+/// Returns FAIL if has an error, OK otherwise.
+int check_isopt(char *var)
+{
+  return parse_isopt(var, NULL, true);
+}
+
+/// @param only_check  if false: refill g_chartab[]
+static int parse_isopt(const char *var, buf_T *buf, bool only_check)
+{
+  const char *p = var;
+
+  // Parses the 'isident', 'iskeyword', 'isfname' and 'isprint' options.
+  // Each option is a list of characters, character numbers or ranges,
+  // separated by commas, e.g.: "200-210,x,#-178,-"
+  while (*p) {
+    bool tilde = false;
+    bool do_isalpha = false;
+
+    if (*p == '^' && p[1] != NUL) {
+      tilde = true;
+      p++;
+    }
+
+    int c;
+    if (ascii_isdigit(*p)) {
+      c = getdigits_int((char **)&p, true, 0);
+    } else {
+      c = mb_ptr2char_adv(&p);
+    }
+    int c2 = -1;
+
+    if (*p == '-' && p[1] != NUL) {
+      p++;
+
+      if (ascii_isdigit(*p)) {
+        c2 = getdigits_int((char **)&p, true, 0);
+      } else {
+        c2 = mb_ptr2char_adv(&p);
+      }
+    }
+
+    if (c <= 0 || c >= 256 || (c2 < c && c2 != -1) || c2 >= 256
+        || !(*p == NUL || *p == ',')) {
+      return FAIL;
+    }
+
+    bool trail_comma = *p == ',';
+    p = skip_to_option_part(p);
+    if (trail_comma && *p == NUL) {
+      // Trailing comma is not allowed.
+      return FAIL;
+    }
+
+    if (only_check) {
+      continue;
+    }
+
+    if (c2 == -1) {  // not a range
+      // A single '@' (not "@-@"):
+      // Decide on letters being ID/printable/keyword chars with
+      // standard function isalpha(). This takes care of locale for
+      // single-byte characters).
+      if (c == '@') {
+        do_isalpha = true;
+        c = 1;
+        c2 = 255;
+      } else {
+        c2 = c;
+      }
+    }
+
+    while (c <= c2) {
+      // Use the MB_ functions here, because isalpha() doesn't
+      // work properly when 'encoding' is "latin1" and the locale is
+      // "C".
+      if (!do_isalpha
+          || mb_islower(c)
+          || mb_isupper(c)) {
+        if (var == p_isi) {  // (re)set ID flag
+          if (tilde) {
+            g_chartab[c] &= (uint8_t) ~CT_ID_CHAR;
+          } else {
+            g_chartab[c] |= CT_ID_CHAR;
+          }
+        } else if (var == p_isp) {  // (re)set printable
+          if (c < ' ' || c > '~') {
+            if (tilde) {
+              g_chartab[c] = (uint8_t)((g_chartab[c] & ~CT_CELL_MASK)
+                                       + ((dy_flags & kOptDyFlagUhex) ? 4 : 2));
+              g_chartab[c] &= (uint8_t) ~CT_PRINT_CHAR;
+            } else {
+              g_chartab[c] = (uint8_t)((g_chartab[c] & ~CT_CELL_MASK) + 1);
+              g_chartab[c] |= CT_PRINT_CHAR;
+            }
+          }
+        } else if (var == p_isf) {  // (re)set fname flag
+          if (tilde) {
+            g_chartab[c] &= (uint8_t) ~CT_FNAME_CHAR;
+          } else {
+            g_chartab[c] |= CT_FNAME_CHAR;
+          }
+        } else {  // (var == p_isk || var == buf->b_p_isk) (re)set keyword flag
+          if (tilde) {
+            RESET_CHARTAB(buf, c);
+          } else {
+            SET_CHARTAB(buf, c);
+          }
+        }
+      }
+      c++;
+    }
+  }
+
   return OK;
 }
 
@@ -267,7 +274,7 @@ int buf_init_chartab(buf_T *buf, int global)
 /// @param bufsize
 void trans_characters(char *buf, int bufsize)
 {
-  char_u *trs;                 // translated character
+  char *trs;                   // translated character
   int len = (int)strlen(buf);  // length of string needing translation
   int room = bufsize - len;    // room in buffer after string
 
@@ -278,7 +285,7 @@ void trans_characters(char *buf, int bufsize)
       len -= trs_len;
     } else {
       trs = transchar_byte((uint8_t)(*buf));
-      trs_len = (int)STRLEN(trs);
+      trs_len = (int)strlen(trs);
 
       if (trs_len > 1) {
         room -= trs_len - 1;
@@ -312,15 +319,13 @@ size_t transstr_len(const char *const s, bool untab)
   while (*p) {
     const size_t l = (size_t)utfc_ptr2len(p);
     if (l > 1) {
-      int pcc[MAX_MCO + 1];
-      pcc[0] = utfc_ptr2char(p, &pcc[1]);
-
-      if (vim_isprintc(pcc[0])) {
+      if (vim_isprintc(utf_ptr2char(p))) {
         len += l;
       } else {
-        for (size_t i = 0; i < ARRAY_SIZE(pcc) && pcc[i]; i++) {
+        for (size_t off = 0; off < l; off += (size_t)utf_ptr2len(p + off)) {
+          int c = utf_ptr2char(p + off);
           char hexbuf[9];
-          len += transchar_hex(hexbuf, pcc[i]);
+          len += transchar_hex(hexbuf, c);
         }
       }
       p += l;
@@ -345,29 +350,29 @@ size_t transstr_len(const char *const s, bool untab)
 /// @param[in]  untab  remove tab characters
 ///
 /// @return length of the resulting string, without the NUL byte.
-size_t transstr_buf(const char *const s, char *const buf, const size_t len, bool untab)
+size_t transstr_buf(const char *const s, const ssize_t slen, char *const buf, const size_t buflen,
+                    bool untab)
   FUNC_ATTR_NONNULL_ALL
 {
   const char *p = s;
   char *buf_p = buf;
-  char *const buf_e = buf_p + len - 1;
+  char *const buf_e = buf_p + buflen - 1;
 
-  while (*p != NUL && buf_p < buf_e) {
+  while ((slen < 0 || (p - s) < slen) && *p != NUL && buf_p < buf_e) {
     const size_t l = (size_t)utfc_ptr2len(p);
     if (l > 1) {
       if (buf_p + l > buf_e) {
         break;  // Exceeded `buf` size.
       }
-      int pcc[MAX_MCO + 1];
-      pcc[0] = utfc_ptr2char(p, &pcc[1]);
 
-      if (vim_isprintc(pcc[0])) {
+      if (vim_isprintc(utf_ptr2char(p))) {
         memmove(buf_p, p, l);
         buf_p += l;
       } else {
-        for (size_t i = 0; i < ARRAY_SIZE(pcc) && pcc[i]; i++) {
+        for (size_t off = 0; off < l; off += (size_t)utf_ptr2len(p + off)) {
+          int c = utf_ptr2char(p + off);
           char hexbuf[9];  // <up to 6 bytes>NUL
-          const size_t hexlen = transchar_hex(hexbuf, pcc[i]);
+          const size_t hexlen = transchar_hex(hexbuf, c);
           if (buf_p + hexlen > buf_e) {
             break;
           }
@@ -379,7 +384,7 @@ size_t transstr_buf(const char *const s, char *const buf, const size_t len, bool
     } else if (*p == TAB && !untab) {
       *buf_p++ = *p++;
     } else {
-      const char *const tb = (const char *)transchar_byte((uint8_t)(*p++));
+      const char *const tb = transchar_byte((uint8_t)(*p++));
       const size_t tb_len = strlen(tb);
       if (buf_p + tb_len > buf_e) {
         break;  // Exceeded `buf` size.
@@ -407,8 +412,24 @@ char *transstr(const char *const s, bool untab)
   // multi-byte characters.
   const size_t len = transstr_len(s, untab) + 1;
   char *const buf = xmalloc(len);
-  transstr_buf(s, buf, len, untab);
+  transstr_buf(s, -1, buf, len, untab);
   return buf;
+}
+
+size_t kv_transstr(StringBuilder *str, const char *const s, bool untab)
+  FUNC_ATTR_NONNULL_ARG(1)
+{
+  if (!s) {
+    return 0;
+  }
+
+  // Compute the length of the result, taking account of unprintable
+  // multi-byte characters.
+  const size_t len = transstr_len(s, untab);
+  kv_ensure_space(*str, len + 1);
+  transstr_buf(s, -1, str->items + str->size, len + 1, untab);
+  str->size += len;  // do not include NUL byte
+  return len;
 }
 
 /// Convert the string "str[orglen]" to do ignore-case comparing.
@@ -416,15 +437,14 @@ char *transstr(const char *const s, bool untab)
 ///
 /// When "buf" is NULL, return an allocated string.
 /// Otherwise, put the result in buf, limited by buflen, and return buf.
-char_u *str_foldcase(char_u *str, int orglen, char_u *buf, int buflen)
+char *str_foldcase(char *str, int orglen, char *buf, int buflen)
   FUNC_ATTR_NONNULL_RET
 {
   garray_T ga;
-  int i;
   int len = orglen;
 
 #define GA_CHAR(i) ((char *)ga.ga_data)[i]
-#define GA_PTR(i) ((char_u *)ga.ga_data + (i))
+#define GA_PTR(i) ((char *)ga.ga_data + (i))
 #define STR_CHAR(i) (buf == NULL ? GA_CHAR(i) : buf[i])
 #define STR_PTR(i) (buf == NULL ? GA_PTR(i) : buf + (i))
 
@@ -450,10 +470,10 @@ char_u *str_foldcase(char_u *str, int orglen, char_u *buf, int buflen)
   }
 
   // Make each character lower case.
-  i = 0;
+  int i = 0;
   while (STR_CHAR(i) != NUL) {
-    int c = utf_ptr2char((char *)STR_PTR(i));
-    int olen = utf_ptr2len((char *)STR_PTR(i));
+    int c = utf_ptr2char(STR_PTR(i));
+    int olen = utf_ptr2len(STR_PTR(i));
     int lc = mb_tolower(c);
 
     // Only replace the character when it is not an invalid
@@ -487,15 +507,15 @@ char_u *str_foldcase(char_u *str, int orglen, char_u *buf, int buflen)
           }
         }
       }
-      (void)utf_char2bytes(lc, (char *)STR_PTR(i));
+      utf_char2bytes(lc, STR_PTR(i));
     }
 
     // skip to next multi-byte char
-    i += utfc_ptr2len((char *)STR_PTR(i));
+    i += utfc_ptr2len(STR_PTR(i));
   }
 
   if (buf == NULL) {
-    return (char_u *)ga.ga_data;
+    return ga.ga_data;
   }
   return buf;
 }
@@ -506,7 +526,7 @@ char_u *str_foldcase(char_u *str, int orglen, char_u *buf, int buflen)
 // Does NOT work for multi-byte characters, c must be <= 255.
 // Also doesn't work for the first byte of a multi-byte, "c" must be a
 // character!
-static char_u transchar_charbuf[11];
+static uint8_t transchar_charbuf[11];
 
 /// Translate a character into a printable one, leaving printable ASCII intact
 ///
@@ -515,13 +535,12 @@ static char_u transchar_charbuf[11];
 /// @param[in]  c  Character to translate.
 ///
 /// @return translated character into a static buffer.
-char_u *transchar(int c)
+char *transchar(int c)
 {
   return transchar_buf(curbuf, c);
 }
 
-char_u *transchar_buf(const buf_T *buf, int c)
-  FUNC_ATTR_NONNULL_ALL
+char *transchar_buf(const buf_T *buf, int c)
 {
   int i = 0;
   if (IS_SPECIAL(c)) {
@@ -533,33 +552,46 @@ char_u *transchar_buf(const buf_T *buf, int c)
   }
 
   if ((!chartab_initialized && (c >= ' ' && c <= '~'))
-      || ((c <= 0xFF) && vim_isprintc_strict(c))) {
+      || ((c <= 0xFF) && vim_isprintc(c))) {
     // printable character
-    transchar_charbuf[i] = (char_u)c;
+    transchar_charbuf[i] = (uint8_t)c;
     transchar_charbuf[i + 1] = NUL;
   } else if (c <= 0xFF) {
-    transchar_nonprint(buf, transchar_charbuf + i, c);
+    transchar_nonprint(buf, (char *)transchar_charbuf + i, c);
   } else {
     transchar_hex((char *)transchar_charbuf + i, c);
   }
-  return transchar_charbuf;
+  return (char *)transchar_charbuf;
 }
 
-/// Like transchar(), but called with a byte instead of a character
+/// Like transchar(), but called with a byte instead of a character.
 ///
-/// Checks for an illegal UTF-8 byte.
+/// Checks for an illegal UTF-8 byte.  Uses 'fileformat' of the current buffer.
 ///
 /// @param[in]  c  Byte to translate.
 ///
 /// @return pointer to translated character in transchar_charbuf.
-char_u *transchar_byte(const int c)
+char *transchar_byte(const int c)
+  FUNC_ATTR_WARN_UNUSED_RESULT
+{
+  return transchar_byte_buf(curbuf, c);
+}
+
+/// Like transchar_buf(), but called with a byte instead of a character.
+///
+/// Checks for an illegal UTF-8 byte.  Uses 'fileformat' of "buf", unless it is NULL.
+///
+/// @param[in]  c  Byte to translate.
+///
+/// @return pointer to translated character in transchar_charbuf.
+char *transchar_byte_buf(const buf_T *buf, const int c)
   FUNC_ATTR_WARN_UNUSED_RESULT
 {
   if (c >= 0x80) {
-    transchar_nonprint(curbuf, transchar_charbuf, c);
-    return transchar_charbuf;
+    transchar_nonprint(buf, (char *)transchar_charbuf, c);
+    return (char *)transchar_charbuf;
   }
-  return transchar(c);
+  return transchar_buf(buf, c);
 }
 
 /// Convert non-printable characters to 2..4 printable ones
@@ -571,26 +603,25 @@ char_u *transchar_byte(const int c)
 ///                       at least 5 bytes (conversion result + NUL).
 /// @param[in]  c  Character to convert. NUL is assumed to be NL according to
 ///                `:h NL-used-for-NUL`.
-void transchar_nonprint(const buf_T *buf, char_u *charbuf, int c)
-  FUNC_ATTR_NONNULL_ALL
+void transchar_nonprint(const buf_T *buf, char *charbuf, int c)
 {
   if (c == NL) {
     // we use newline in place of a NUL
     c = NUL;
-  } else if ((c == CAR) && (get_fileformat(buf) == EOL_MAC)) {
+  } else if (buf != NULL && c == CAR && get_fileformat(buf) == EOL_MAC) {
     // we use CR in place of  NL in this case
     c = NL;
   }
   assert(c <= 0xff);
 
-  if (dy_flags & DY_UHEX || c > 0x7f) {
+  if (dy_flags & kOptDyFlagUhex || c > 0x7f) {
     // 'display' has "uhex"
-    transchar_hex((char *)charbuf, c);
+    transchar_hex(charbuf, c);
   } else {
     // 0x00 - 0x1f and 0x7f
     charbuf[0] = '^';
     // DEL displayed as ^?
-    charbuf[1] = (char_u)(c ^ 0x40);
+    charbuf[1] = (char)(uint8_t)(c ^ 0x40);
 
     charbuf[2] = NUL;
   }
@@ -608,8 +639,8 @@ size_t transchar_hex(char *const buf, const int c)
   size_t i = 0;
 
   buf[i++] = '<';
-  if (c > 255) {
-    if (c > 255 * 256) {
+  if (c > 0xFF) {
+    if (c > 0xFFFF) {
       buf[i++] = (char)nr2hex((unsigned)c >> 20);
       buf[i++] = (char)nr2hex((unsigned)c >> 16);
     }
@@ -621,6 +652,17 @@ size_t transchar_hex(char *const buf, const int c)
   buf[i++] = '>';
   buf[i] = NUL;
   return i;
+}
+
+/// Mirror text "str" for right-left displaying.
+/// Only works for single-byte characters (e.g., numbers).
+void rl_mirror_ascii(char *str, char *end)
+{
+  for (char *p1 = str, *p2 = (end ? end : str + strlen(str)) - 1; p1 < p2; p1++, p2--) {
+    char t = *p1;
+    *p1 = *p2;
+    *p2 = t;
+  }
 }
 
 /// Convert the lower 4 bits of byte "c" to its hex character
@@ -707,7 +749,7 @@ int ptr2cells(const char *p_in)
 /// @param s
 ///
 /// @return number of character cells.
-int vim_strsize(char *s)
+int vim_strsize(const char *s)
 {
   return vim_strnsize(s, MAXCOL);
 }
@@ -721,7 +763,7 @@ int vim_strsize(char *s)
 /// @param len
 ///
 /// @return Number of character cells.
-int vim_strnsize(char *s, int len)
+int vim_strnsize(const char *s, int len)
 {
   assert(s != NULL);
   int size = 0;
@@ -786,10 +828,10 @@ bool vim_iswordc_buf(const int c, buf_T *const buf)
 /// @param  p  pointer to the multi-byte character
 ///
 /// @return true if "p" points to a keyword character.
-bool vim_iswordp(const char_u *const p)
+bool vim_iswordp(const char *const p)
   FUNC_ATTR_PURE FUNC_ATTR_WARN_UNUSED_RESULT FUNC_ATTR_NONNULL_ALL
 {
-  return vim_iswordp_buf((char *)p, curbuf);
+  return vim_iswordp_buf(p, curbuf);
 }
 
 /// Just like vim_iswordc_buf() but uses a pointer to the (multi-byte)
@@ -810,14 +852,24 @@ bool vim_iswordp_buf(const char *const p, buf_T *const buf)
   return vim_iswordc_buf(c, buf);
 }
 
-/// Check that "c" is a valid file-name character.
+/// Check that "c" is a valid file-name character as specified with the
+/// 'isfname' option.
 /// Assume characters above 0x100 are valid (multi-byte).
+/// To be used for commands like "gf".
 ///
 /// @param  c  character to check
 bool vim_isfilec(int c)
   FUNC_ATTR_PURE FUNC_ATTR_WARN_UNUSED_RESULT
 {
   return c >= 0x100 || (c > 0 && (g_chartab[c] & CT_FNAME_CHAR));
+}
+
+/// Check if "c" is a valid file-name character, including characters left
+/// out of 'isfname' to make "gf" work, such as ',', ' ', '@', ':', etc.
+bool vim_is_fname_char(int c)
+  FUNC_ATTR_PURE FUNC_ATTR_WARN_UNUSED_RESULT
+{
+  return vim_isfilec(c) || c == ',' || c == ' ' || c == '@' || c == ':';
 }
 
 /// Check that "c" is a valid file-name character or a wildcard character
@@ -836,7 +888,6 @@ bool vim_isfilec_or_wc(int c)
 }
 
 /// Check that "c" is a printable character.
-/// Assume characters above 0x100 are printable for double-byte encodings.
 ///
 /// @param  c  character to check
 bool vim_isprintc(int c)
@@ -848,316 +899,19 @@ bool vim_isprintc(int c)
   return c > 0 && (g_chartab[c] & CT_PRINT_CHAR);
 }
 
-/// Strict version of vim_isprintc(c), don't return true if "c" is the head
-/// byte of a double-byte character.
-///
-/// @param  c  character to check
-///
-/// @return true if "c" is a printable character.
-bool vim_isprintc_strict(int c)
-  FUNC_ATTR_PURE FUNC_ATTR_WARN_UNUSED_RESULT
-{
-  if (c >= 0x100) {
-    return utf_printable(c);
-  }
-  return c > 0 && (g_chartab[c] & CT_PRINT_CHAR);
-}
-
-/// Check that virtual column "vcol" is in the rightmost column of window "wp".
-///
-/// @param  wp    window
-/// @param  vcol  column number
-bool in_win_border(win_T *wp, colnr_T vcol)
-  FUNC_ATTR_PURE FUNC_ATTR_WARN_UNUSED_RESULT FUNC_ATTR_NONNULL_ARG(1)
-{
-  if (wp->w_width_inner == 0) {
-    // there is no border
-    return false;
-  }
-  int width1 = wp->w_width_inner - win_col_off(wp);  // width of first line (after line number)
-
-  if ((int)vcol < width1 - 1) {
-    return false;
-  }
-
-  if ((int)vcol == width1 - 1) {
-    return true;
-  }
-  int width2 = width1 + win_col_off2(wp);  // width of further lines
-
-  if (width2 <= 0) {
-    return false;
-  }
-  return (vcol - width1) % width2 == width2 - 1;
-}
-
-/// Get virtual column number of pos.
-///  start: on the first position of this character (TAB, ctrl)
-/// cursor: where the cursor is on this character (first char, except for TAB)
-///    end: on the last position of this character (TAB, ctrl)
-///
-/// This is used very often, keep it fast!
-///
-/// @param wp
-/// @param pos
-/// @param start
-/// @param cursor
-/// @param end
-void getvcol(win_T *wp, pos_T *pos, colnr_T *start, colnr_T *cursor, colnr_T *end)
-{
-  char *ptr;     // points to current char
-  char *posptr;  // points to char at pos->col
-  int incr;
-  int head;
-  long *vts = wp->w_buffer->b_p_vts_array;
-  int ts = (int)wp->w_buffer->b_p_ts;
-
-  colnr_T vcol = 0;
-  char *line = ptr = ml_get_buf(wp->w_buffer, pos->lnum, false);  // start of the line
-
-  if (pos->col == MAXCOL) {
-    // continue until the NUL
-    posptr = NULL;
-  } else {
-    // In a few cases the position can be beyond the end of the line.
-    for (colnr_T i = 0; i < pos->col; i++) {
-      if (ptr[i] == NUL) {
-        pos->col = i;
-        break;
-      }
-    }
-    posptr = ptr + pos->col;
-    posptr -= utf_head_off(line, posptr);
-  }
-
-  chartabsize_T cts;
-  init_chartabsize_arg(&cts, wp, pos->lnum, 0, line, line);
-
-  // This function is used very often, do some speed optimizations.
-  // When 'list', 'linebreak', 'showbreak' and 'breakindent' are not set
-  // and there are no virtual text use a simple loop.
-  // Also use this when 'list' is set but tabs take their normal size.
-  if ((!wp->w_p_list || (wp->w_p_lcs_chars.tab1 != NUL))
-      && !wp->w_p_lbr
-      && *get_showbreak_value(wp) == NUL
-      && !wp->w_p_bri
-      && !cts.cts_has_virt_text) {
-    for (;;) {
-      head = 0;
-      int c = (uint8_t)(*ptr);
-
-      // make sure we don't go past the end of the line
-      if (c == NUL) {
-        // NUL at end of line only takes one column
-        incr = 1;
-        break;
-      }
-
-      // A tab gets expanded, depending on the current column
-      if (c == TAB) {
-        incr = tabstop_padding(vcol, ts, vts);
-      } else {
-        // For utf-8, if the byte is >= 0x80, need to look at
-        // further bytes to find the cell width.
-        if (c >= 0x80) {
-          incr = utf_ptr2cells(ptr);
-        } else {
-          incr = g_chartab[c] & CT_CELL_MASK;
-        }
-
-        // If a double-cell char doesn't fit at the end of a line
-        // it wraps to the next line, it's like this char is three
-        // cells wide.
-        if ((incr == 2)
-            && wp->w_p_wrap
-            && (MB_BYTE2LEN((uint8_t)(*ptr)) > 1)
-            && in_win_border(wp, vcol)) {
-          incr++;
-          head = 1;
-        }
-      }
-
-      if ((posptr != NULL) && (ptr >= posptr)) {
-        // character at pos->col
-        break;
-      }
-
-      vcol += incr;
-      MB_PTR_ADV(ptr);
-    }
-  } else {
-    for (;;) {
-      // A tab gets expanded, depending on the current column
-      // Other things also take up space.
-      head = 0;
-      incr = win_lbr_chartabsize(&cts, &head);
-
-      // make sure we don't go past the end of the line
-      if (*cts.cts_ptr == NUL) {
-        // NUL at end of line only takes one column
-        incr = 1;
-        break;
-      }
-
-      if ((posptr != NULL) && (cts.cts_ptr >= posptr)) {
-        // character at pos->col
-        break;
-      }
-
-      cts.cts_vcol += incr;
-      MB_PTR_ADV(cts.cts_ptr);
-    }
-    vcol = cts.cts_vcol;
-    ptr = cts.cts_ptr;
-  }
-  clear_chartabsize_arg(&cts);
-
-  if (start != NULL) {
-    *start = vcol + head;
-  }
-
-  if (end != NULL) {
-    *end = vcol + incr - 1;
-  }
-
-  if (cursor != NULL) {
-    // cursor is after inserted text
-    vcol += cts.cts_cur_text_width;
-    if ((*ptr == TAB)
-        && (State & MODE_NORMAL)
-        && !wp->w_p_list
-        && !virtual_active()
-        && !(VIsual_active && ((*p_sel == 'e') || ltoreq(*pos, VIsual)))) {
-      // cursor at end
-      *cursor = vcol + incr - 1;
-    } else {
-      // cursor at start
-      *cursor = vcol + head;
-    }
-  }
-}
-
-/// Get virtual cursor column in the current window, pretending 'list' is off.
-///
-/// @param posp
-///
-/// @retujrn The virtual cursor column.
-colnr_T getvcol_nolist(pos_T *posp)
-{
-  int list_save = curwin->w_p_list;
-  colnr_T vcol;
-
-  curwin->w_p_list = false;
-  if (posp->coladd) {
-    getvvcol(curwin, posp, NULL, &vcol, NULL);
-  } else {
-    getvcol(curwin, posp, NULL, &vcol, NULL);
-  }
-  curwin->w_p_list = list_save;
-  return vcol;
-}
-
-/// Get virtual column in virtual mode.
-///
-/// @param wp
-/// @param pos
-/// @param start
-/// @param cursor
-/// @param end
-void getvvcol(win_T *wp, pos_T *pos, colnr_T *start, colnr_T *cursor, colnr_T *end)
-{
-  colnr_T col;
-
-  if (virtual_active()) {
-    // For virtual mode, only want one value
-    getvcol(wp, pos, &col, NULL, NULL);
-
-    colnr_T coladd = pos->coladd;
-    colnr_T endadd = 0;
-
-    // Cannot put the cursor on part of a wide character.
-    char *ptr = ml_get_buf(wp->w_buffer, pos->lnum, false);
-
-    if (pos->col < (colnr_T)strlen(ptr)) {
-      int c = utf_ptr2char(ptr + pos->col);
-      if ((c != TAB) && vim_isprintc(c)) {
-        endadd = (colnr_T)(char2cells(c) - 1);
-        if (coladd > endadd) {
-          // past end of line
-          endadd = 0;
-        } else {
-          coladd = 0;
-        }
-      }
-    }
-    col += coladd;
-
-    if (start != NULL) {
-      *start = col;
-    }
-
-    if (cursor != NULL) {
-      *cursor = col;
-    }
-
-    if (end != NULL) {
-      *end = col + endadd;
-    }
-  } else {
-    getvcol(wp, pos, start, cursor, end);
-  }
-}
-
-/// Get the leftmost and rightmost virtual column of pos1 and pos2.
-/// Used for Visual block mode.
-///
-/// @param wp
-/// @param pos1
-/// @param pos2
-/// @param left
-/// @param right
-void getvcols(win_T *wp, pos_T *pos1, pos_T *pos2, colnr_T *left, colnr_T *right)
-{
-  colnr_T from1;
-  colnr_T from2;
-  colnr_T to1;
-  colnr_T to2;
-
-  if (lt(*pos1, *pos2)) {
-    getvvcol(wp, pos1, &from1, NULL, &to1);
-    getvvcol(wp, pos2, &from2, NULL, &to2);
-  } else {
-    getvvcol(wp, pos2, &from1, NULL, &to1);
-    getvvcol(wp, pos1, &from2, NULL, &to2);
-  }
-
-  if (from2 < from1) {
-    *left = from2;
-  } else {
-    *left = from1;
-  }
-
-  if (to2 > to1) {
-    if ((*p_sel == 'e') && (from2 - 1 >= to1)) {
-      *right = from2 - 1;
-    } else {
-      *right = to2;
-    }
-  } else {
-    *right = to1;
-  }
-}
-
 /// skipwhite: skip over ' ' and '\t'.
 ///
 /// @param[in]  p  String to skip in.
 ///
 /// @return Pointer to character after the skipped whitespace.
-char *skipwhite(const char *const p)
+char *skipwhite(const char *p)
   FUNC_ATTR_PURE FUNC_ATTR_WARN_UNUSED_RESULT FUNC_ATTR_NONNULL_ALL
   FUNC_ATTR_NONNULL_RET
 {
-  return skipwhite_len(p, strlen(p));
+  while (ascii_iswhite(*p)) {
+    p++;
+  }
+  return (char *)p;
 }
 
 /// Like `skipwhite`, but skip up to `len` characters.
@@ -1312,8 +1066,8 @@ char *skiptowhite(const char *p)
 /// @param p
 ///
 /// @return Pointer to the next whitespace character.
-char *skiptowhite_esc(char *p)
-  FUNC_ATTR_PURE
+char *skiptowhite_esc(const char *p)
+  FUNC_ATTR_NONNULL_ALL FUNC_ATTR_PURE
 {
   while (*p != ' ' && *p != '\t' && *p != NUL) {
     if (((*p == '\\') || (*p == Ctrl_V)) && (*(p + 1) != NUL)) {
@@ -1321,7 +1075,7 @@ char *skiptowhite_esc(char *p)
     }
     p++;
   }
-  return p;
+  return (char *)p;
 }
 
 /// Skip over text until '\n' or NUL.
@@ -1406,14 +1160,14 @@ long getdigits_long(char **pp, bool strict, long def)
 /// Gets a int32_t number from a string.
 ///
 /// @see getdigits
-int32_t getdigits_int32(char **pp, bool strict, long def)
+int32_t getdigits_int32(char **pp, bool strict, int32_t def)
 {
   intmax_t number = getdigits(pp, strict, def);
-#if SIZEOF_INTMAX_T > SIZEOF_INT32_T
+#if SIZEOF_INTMAX_T > 4
   if (strict) {
     assert(number >= INT32_MIN && number <= INT32_MAX);
   } else if (!(number >= INT32_MIN && number <= INT32_MAX)) {
-    return (int32_t)def;
+    return def;
   }
 #endif
   return (int32_t)number;
@@ -1463,9 +1217,10 @@ bool vim_isblankline(char *lbuf)
 /// @param strict If true, fail if the number has unexpected trailing
 ///               alphanumeric chars: *len is set to 0 and nothing else is
 ///               returned.
+/// @param overflow When not NULL, set to true for overflow.
 void vim_str2nr(const char *const start, int *const prep, int *const len, const int what,
                 varnumber_T *const nptr, uvarnumber_T *const unptr, const int maxlen,
-                const bool strict)
+                const bool strict, bool *const overflow)
   FUNC_ATTR_NONNULL_ARG(1)
 {
   const char *ptr = start;
@@ -1566,7 +1321,6 @@ void vim_str2nr(const char *const start, int *const prep, int *const len, const 
 
   // Do the conversion manually to avoid sscanf() quirks.
   abort();  // Should’ve used goto earlier.
-  // -V:PARSE_NUMBER:560
 #define PARSE_NUMBER(base, cond, conv) \
   do { \
     const char *const after_prefix = ptr; \
@@ -1589,6 +1343,9 @@ void vim_str2nr(const char *const start, int *const prep, int *const len, const 
         un = (base) * un + digit; \
       } else { \
         un = UVARNUMBER_MAX; \
+        if (overflow != NULL) { \
+          *overflow = true; \
+        } \
       } \
       ptr++; \
     } \
@@ -1627,12 +1384,18 @@ vim_str2nr_proceed:
       // avoid ubsan error for overflow
       if (un > VARNUMBER_MAX) {
         *nptr = VARNUMBER_MIN;
+        if (overflow != NULL) {
+          *overflow = true;
+        }
       } else {
         *nptr = -(varnumber_T)un;
       }
     } else {
       if (un > VARNUMBER_MAX) {
         un = VARNUMBER_MAX;
+        if (overflow != NULL) {
+          *overflow = true;
+        }
       }
       *nptr = (varnumber_T)un;
     }
@@ -1698,11 +1461,11 @@ bool rem_backslash(const char *str)
              || (str[1] != NUL
                  && str[1] != '*'
                  && str[1] != '?'
-                 && !vim_isfilec(str[1])));
+                 && !vim_isfilec((uint8_t)str[1])));
 
-#else  // ifdef BACKSLASH_IN_FILENAME
+#else
   return str[0] == '\\' && str[1] != NUL;
-#endif  // ifdef BACKSLASH_IN_FILENAME
+#endif
 }
 
 /// Halve the number of backslashes in a file name argument.
@@ -1710,10 +1473,20 @@ bool rem_backslash(const char *str)
 /// @param p
 void backslash_halve(char *p)
 {
-  for (; *p; p++) {
-    if (rem_backslash(p)) {
-      STRMOVE(p, p + 1);
+  for (; *p && !rem_backslash(p); p++) {}
+  if (*p != NUL) {
+    char *dst = p;
+    goto start;
+    while (*p != NUL) {
+      if (rem_backslash(p)) {
+start:
+        *dst++ = *(p + 1);
+        p += 2;
+      } else {
+        *dst++ = *p++;
+      }
     }
+    *dst = NUL;
   }
 }
 
@@ -1725,8 +1498,16 @@ void backslash_halve(char *p)
 char *backslash_halve_save(const char *p)
   FUNC_ATTR_NONNULL_ALL FUNC_ATTR_NONNULL_RET
 {
-  // TODO(philix): simplify and improve backslash_halve_save algorithm
-  char *res = xstrdup(p);
-  backslash_halve(res);
+  char *res = xmalloc(strlen(p) + 1);
+  char *dst = res;
+  while (*p != NUL) {
+    if (rem_backslash(p)) {
+      *dst++ = *(p + 1);
+      p += 2;
+    } else {
+      *dst++ = *p++;
+    }
+  }
+  *dst = NUL;
   return res;
 }

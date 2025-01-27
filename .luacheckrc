@@ -19,8 +19,10 @@ cache = true
 ignore = {
   "631",  -- max_line_length
   "212/_.*",  -- unused argument, for vars with "_" prefix
+  "214", -- used variable with unused hint ("_" prefix)
   "121", -- setting read-only global variable 'vim'
   "122", -- setting read-only field of global variable 'vim'
+  "581", -- negation of a relational operator- operator can be flipped (not for tables)
 }
 
 -- Global objects defined by the C code
@@ -40,5 +42,12 @@ globals = {
 }
 
 exclude_files = {
+  'test/_meta.lua',
   'test/functional/fixtures/lua/syntax_error.lua',
+  'runtime/lua/vim/treesitter/_meta.lua',
+  'runtime/lua/vim/_meta/vimfn.lua',
+  'runtime/lua/vim/_meta/api.lua',
+  'runtime/lua/vim/re.lua',
+  'runtime/lua/coxpcall.lua',
+  'src/nvim/eval.lua',
 }

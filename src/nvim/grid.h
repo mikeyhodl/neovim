@@ -1,12 +1,12 @@
-#ifndef NVIM_GRID_H
-#define NVIM_GRID_H
+#pragma once
 
 #include <stdbool.h>
+#include <stddef.h>  // IWYU pragma: keep
 
-#include "nvim/ascii.h"
-#include "nvim/buffer_defs.h"
-#include "nvim/grid_defs.h"
-#include "nvim/mbyte.h"
+#include "nvim/grid_defs.h"  // IWYU pragma: keep
+#include "nvim/macros_defs.h"
+#include "nvim/pos_defs.h"
+#include "nvim/types_defs.h"
 
 /// By default, all windows are drawn on a single rectangular grid, represented by
 /// this ScreenGrid instance. In multigrid mode each window will have its own
@@ -15,47 +15,35 @@
 ///
 /// Note: before the screen is initialized and when out of memory these can be
 /// NULL.
-EXTERN ScreenGrid default_grid INIT(= SCREEN_GRID_INIT);
+EXTERN ScreenGrid default_grid INIT( = SCREEN_GRID_INIT);
 
 #define DEFAULT_GRID_HANDLE 1  // handle for the default_grid
 
 /// While resizing the screen this flag is set.
-EXTERN bool resizing_screen INIT(= 0);
+EXTERN bool resizing_screen INIT( = 0);
 
-EXTERN schar_T *linebuf_char INIT(= NULL);
-EXTERN sattr_T *linebuf_attr INIT(= NULL);
+EXTERN schar_T *linebuf_char INIT( = NULL);
+EXTERN sattr_T *linebuf_attr INIT( = NULL);
+EXTERN colnr_T *linebuf_vcol INIT( = NULL);
+EXTERN char *linebuf_scratch INIT( = NULL);
 
-// Low-level functions to manipulate individual character cells on the
-// screen grid.
+/// flags for grid_put_linebuf()
+enum {
+  SLF_RIGHTLEFT = 1,
+  SLF_WRAP      = 2,
+  SLF_INC_VCOL  = 4,
+};
 
 /// Put a ASCII character in a screen cell.
-static inline void schar_from_ascii(char *p, const char c)
-{
-  p[0] = c;
-  p[1] = 0;
-}
-
-/// Put a unicode character in a screen cell.
-static inline int schar_from_char(char *p, int c)
-{
-  int len = utf_char2bytes(c, p);
-  p[len] = NUL;
-  return len;
-}
-
-/// compare the contents of two screen cells.
-static inline int schar_cmp(char *sc1, char *sc2)
-{
-  return strncmp(sc1, sc2, sizeof(schar_T));
-}
-
-/// copy the contents of screen cell `sc2` into cell `sc1`
-static inline void schar_copy(char *sc1, char *sc2)
-{
-  xstrlcpy(sc1, sc2, sizeof(schar_T));
-}
+///
+/// If `x` is a compile time constant, schar_from_ascii(x) will also be.
+/// But the specific value varies per platform.
+#ifdef ORDER_BIG_ENDIAN
+# define schar_from_ascii(x) ((schar_T)((x) << 24))
+#else
+# define schar_from_ascii(x) ((schar_T)(x))
+#endif
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "grid.h.generated.h"
 #endif
-#endif  // NVIM_GRID_H

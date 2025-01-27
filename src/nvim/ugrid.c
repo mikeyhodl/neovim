@@ -1,15 +1,9 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <assert.h>
-#include <limits.h>
-#include <stdbool.h>
-#include <stdio.h>
+#include <string.h>
 
-#include "nvim/assert.h"
+#include "nvim/grid.h"
+#include "nvim/memory.h"
 #include "nvim/ugrid.h"
-#include "nvim/ui.h"
-#include "nvim/vim.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "ugrid.c.generated.h"
@@ -67,10 +61,8 @@ void ugrid_scroll(UGrid *grid, int top, int bot, int left, int right, int count)
     step = -1;
   }
 
-  int i;
-
   // Copy cell data
-  for (i = start; i != stop; i += step) {
+  for (int i = start; i != stop; i += step) {
     UCell *target_row = grid->cells[i] + left;
     UCell *source_row = grid->cells[i + count] + left;
     assert(right >= left && left >= 0);
@@ -83,8 +75,7 @@ static void clear_region(UGrid *grid, int top, int bot, int left, int right, sat
 {
   for (int row = top; row <= bot; row++) {
     UGRID_FOREACH_CELL(grid, row, left, right + 1, {
-      cell->data[0] = ' ';
-      cell->data[1] = 0;
+      cell->data = schar_from_ascii(' ');
       cell->attr = attr;
     });
   }

@@ -1,20 +1,22 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear, eval, eq = helpers.clear, helpers.eval, helpers.eq
-local feed, command, expect = helpers.feed, helpers.command, helpers.expect
-local curbufmeths, funcs, neq = helpers.curbufmeths, helpers.funcs, helpers.neq
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear, eval, eq = n.clear, n.eval, t.eq
+local feed, command, expect = n.feed, n.command, n.expect
+local api, fn, neq = n.api, n.fn, t.neq
 
 describe('TextYankPost', function()
   before_each(function()
     clear()
 
     -- emulate the clipboard so system clipboard isn't affected
-    command('let &rtp = "test/functional/fixtures,".&rtp')
+    command('set rtp^=test/functional/fixtures')
 
     command('let g:count = 0')
     command('autocmd TextYankPost * let g:event = copy(v:event)')
     command('autocmd TextYankPost * let g:count += 1')
 
-    curbufmeths.set_lines(0, -1, true, {
+    api.nvim_buf_set_lines(0, 0, -1, true, {
       'foo\0bar',
       'baz text',
     })
@@ -28,7 +30,7 @@ describe('TextYankPost', function()
       regcontents = { 'foo\nbar' },
       regname = '',
       regtype = 'V',
-      visual = false
+      visual = false,
     }, eval('g:event'))
     eq(1, eval('g:count'))
 
@@ -42,7 +44,7 @@ describe('TextYankPost', function()
       regcontents = { 'baz ' },
       regname = '',
       regtype = 'v',
-      visual = false
+      visual = false,
     }, eval('g:event'))
     eq(2, eval('g:count'))
 
@@ -52,8 +54,8 @@ describe('TextYankPost', function()
       operator = 'y',
       regcontents = { 'foo', 'baz' },
       regname = '',
-      regtype = "\0223", -- ^V + block width
-      visual = true
+      regtype = '\0223', -- ^V + block width
+      visual = true,
     }, eval('g:event'))
     eq(3, eval('g:count'))
   end)
@@ -66,25 +68,25 @@ describe('TextYankPost', function()
       regcontents = { 'foo\nbar' },
       regname = '',
       regtype = 'V',
-      visual = false
+      visual = false,
     }, eval('g:event'))
 
     command('set debug=msg')
     -- the regcontents should not be changed without copy.
-    local status, err = pcall(command,'call extend(g:event.regcontents, ["more text"])')
-    eq(status,false)
+    local status, err = pcall(command, 'call extend(g:event.regcontents, ["more text"])')
+    eq(false, status)
     neq(nil, string.find(err, ':E742:'))
 
     -- can't mutate keys inside the autocommand
     command('autocmd! TextYankPost * let v:event.regcontents = 0')
-    status, err = pcall(command,'normal yy')
-    eq(status,false)
+    status, err = pcall(command, 'normal yy')
+    eq(false, status)
     neq(nil, string.find(err, ':E46:'))
 
     -- can't add keys inside the autocommand
     command('autocmd! TextYankPost * let v:event.mykey = 0')
-    status, err = pcall(command,'normal yy')
-    eq(status,false)
+    status, err = pcall(command, 'normal yy')
+    eq(false, status)
     neq(nil, string.find(err, ':E742:'))
   end)
 
@@ -97,10 +99,10 @@ describe('TextYankPost', function()
       regcontents = { 'foo\nbar' },
       regname = '',
       regtype = 'V',
-      visual = false
+      visual = false,
     }, eval('g:event'))
     eq(1, eval('g:count'))
-    eq({ 'foo\nbar' }, funcs.getreg('+',1,1))
+    eq({ 'foo\nbar' }, fn.getreg('+', 1, 1))
   end)
 
   it('is executed after delete and change', function()
@@ -111,7 +113,7 @@ describe('TextYankPost', function()
       regcontents = { 'foo' },
       regname = '',
       regtype = 'v',
-      visual = false
+      visual = false,
     }, eval('g:event'))
     eq(1, eval('g:count'))
 
@@ -122,7 +124,7 @@ describe('TextYankPost', function()
       regcontents = { '\nbar' },
       regname = '',
       regtype = 'V',
-      visual = false
+      visual = false,
     }, eval('g:event'))
     eq(2, eval('g:count'))
 
@@ -133,7 +135,7 @@ describe('TextYankPost', function()
       regcontents = { 'baz' },
       regname = '',
       regtype = 'v',
-      visual = false
+      visual = false,
     }, eval('g:event'))
     eq(3, eval('g:count'))
   end)
@@ -162,7 +164,7 @@ describe('TextYankPost', function()
       regcontents = { 'bar' },
       regname = 'b',
       regtype = 'v',
-      visual = false
+      visual = false,
     }, eval('g:event'))
 
     feed('"*yy')
@@ -172,10 +174,10 @@ describe('TextYankPost', function()
       regcontents = { 'foo\nbar' },
       regname = '*',
       regtype = 'V',
-      visual = false
+      visual = false,
     }, eval('g:event'))
 
-    command("set clipboard=unnamed")
+    command('set clipboard=unnamed')
 
     -- regname still shows the name the user requested
     feed('yy')
@@ -185,7 +187,7 @@ describe('TextYankPost', function()
       regcontents = { 'foo\nbar' },
       regname = '',
       regtype = 'V',
-      visual = false
+      visual = false,
     }, eval('g:event'))
 
     feed('"*yy')
@@ -195,7 +197,7 @@ describe('TextYankPost', function()
       regcontents = { 'foo\nbar' },
       regname = '*',
       regtype = 'V',
-      visual = false
+      visual = false,
     }, eval('g:event'))
   end)
 
@@ -207,7 +209,7 @@ describe('TextYankPost', function()
       regcontents = { 'foo\nbar' },
       regname = '+',
       regtype = 'V',
-      visual = false
+      visual = false,
     }, eval('g:event'))
     eq(1, eval('g:count'))
 
@@ -218,7 +220,7 @@ describe('TextYankPost', function()
       regcontents = { 'baz text' },
       regname = '',
       regtype = 'V',
-      visual = false
+      visual = false,
     }, eval('g:event'))
     eq(2, eval('g:count'))
 
@@ -229,7 +231,7 @@ describe('TextYankPost', function()
       regcontents = { 'baz ' },
       regname = '',
       regtype = 'v',
-      visual = false
+      visual = false,
     }, eval('g:event'))
     eq(3, eval('g:count'))
 
@@ -240,7 +242,7 @@ describe('TextYankPost', function()
       regcontents = { 'baz text' },
       regname = '',
       regtype = 'V',
-      visual = false
+      visual = false,
     }, eval('g:event'))
     eq(4, eval('g:count'))
   end)

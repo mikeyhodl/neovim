@@ -3,9 +3,10 @@
 -- A pattern that gives the expected result produces OK, so that we know it was
 -- actually tried.
 
-local helpers = require('test.functional.helpers')(after_each)
-local insert, source = helpers.insert, helpers.source
-local clear, expect = helpers.clear, helpers.expect
+local n = require('test.functional.testnvim')()
+
+local insert, source = n.insert, n.source
+local clear, expect = n.clear, n.expect
 
 describe('regex with multi-byte', function()
   setup(clear)

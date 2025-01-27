@@ -1,11 +1,9 @@
-#ifndef NVIM_MOVE_H
-#define NVIM_MOVE_H
+#pragma once
 
-#include <stdbool.h>
-
-#include "nvim/vim.h"
+#include "nvim/eval/typval_defs.h"  // IWYU pragma: keep
+#include "nvim/types_defs.h"  // IWYU pragma: keep
+#include "nvim/vim_defs.h"  // IWYU pragma: keep
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "move.h.generated.h"
 #endif
-#endif  // NVIM_MOVE_H

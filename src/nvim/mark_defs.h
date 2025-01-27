@@ -1,9 +1,15 @@
-#ifndef NVIM_MARK_DEFS_H
-#define NVIM_MARK_DEFS_H
+#pragma once
 
-#include "nvim/eval/typval.h"
-#include "nvim/os/time.h"
-#include "nvim/pos.h"
+#include <stdbool.h>
+
+#include "nvim/func_attr.h"
+#include "nvim/os/time_defs.h"
+#include "nvim/pos_defs.h"
+#include "nvim/types_defs.h"
+
+#ifdef INCLUDE_GENERATED_DECLARATIONS
+# include "mark_defs.h.inline.generated.h"
+#endif
 
 // marks: positions in a file
 // (a normal mark is a lnum/col pair, the same as a file position)
@@ -60,7 +66,7 @@ typedef enum {
 #define TAGSTACKSIZE    20
 
 /// Represents view in which the mark was created
-typedef struct fmarkv {
+typedef struct {
   linenr_T topline_offset;  ///< Amount of lines from the mark lnum to the top of the window.
                             ///< Use MAXLNUM to indicate that the mark does not have a view.
 } fmarkv_T;
@@ -68,22 +74,53 @@ typedef struct fmarkv {
 #define INIT_FMARKV { MAXLNUM }
 
 /// Structure defining single local mark
-typedef struct filemark {
+typedef struct {
   pos_T mark;           ///< Cursor position.
   int fnum;             ///< File number.
   Timestamp timestamp;  ///< Time when this mark was last set.
   fmarkv_T view;  ///< View the mark was created on
-  dict_T *additional_data;  ///< Additional data from ShaDa file.
+  AdditionalData *additional_data;  ///< Additional data from ShaDa file.
 } fmark_T;
 
 #define INIT_FMARK { { 0, 0, 0 }, 0, 0, INIT_FMARKV, NULL }
 
 /// Structure defining extended mark (mark with file name attached)
-typedef struct xfilemark {
+typedef struct {
   fmark_T fmark;       ///< Actual mark.
   char *fname;  ///< File name, used when fnum == 0.
 } xfmark_T;
 
 #define INIT_XFMARK { INIT_FMARK, NULL }
 
-#endif  // NVIM_MARK_DEFS_H
+/// Return true if position a is before (less than) position b.
+static inline bool lt(pos_T a, pos_T b)
+  FUNC_ATTR_CONST FUNC_ATTR_ALWAYS_INLINE
+{
+  if (a.lnum != b.lnum) {
+    return a.lnum < b.lnum;
+  } else if (a.col != b.col) {
+    return a.col < b.col;
+  } else {
+    return a.coladd < b.coladd;
+  }
+}
+
+static inline bool equalpos(pos_T a, pos_T b)
+  FUNC_ATTR_CONST FUNC_ATTR_ALWAYS_INLINE
+{
+  return (a.lnum == b.lnum) && (a.col == b.col) && (a.coladd == b.coladd);
+}
+
+static inline bool ltoreq(pos_T a, pos_T b)
+  FUNC_ATTR_CONST FUNC_ATTR_ALWAYS_INLINE
+{
+  return lt(a, b) || equalpos(a, b);
+}
+
+static inline void clearpos(pos_T *a)
+  FUNC_ATTR_ALWAYS_INLINE
+{
+  a->lnum = 0;
+  a->col = 0;
+  a->coladd = 0;
+}

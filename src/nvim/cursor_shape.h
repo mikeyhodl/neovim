@@ -1,8 +1,7 @@
-#ifndef NVIM_CURSOR_SHAPE_H
-#define NVIM_CURSOR_SHAPE_H
+#pragma once
 
-#include "nvim/api/private/defs.h"
-#include "nvim/types.h"
+#include "nvim/api/private/defs.h"  // IWYU pragma: keep
+#include "nvim/memory_defs.h"  // IWYU pragma: keep
 
 /// struct to store values from 'guicursor' and 'mouseshape'
 /// Indexes in shape_table[]
@@ -24,7 +23,8 @@ typedef enum {
   SHAPE_IDX_MORE   = 14,      ///< Hit-return or More
   SHAPE_IDX_MOREL  = 15,      ///< Hit-return or More in last line
   SHAPE_IDX_SM     = 16,      ///< showing matching paren
-  SHAPE_IDX_COUNT  = 17,
+  SHAPE_IDX_TERM   = 17,      ///< Terminal mode
+  SHAPE_IDX_COUNT  = 18,
 } ModeShape;
 
 typedef enum {
@@ -39,14 +39,14 @@ typedef enum {
 #define SHAPE_MOUSE     1       // used for mouse pointer shape
 #define SHAPE_CURSOR    2       // used for text cursor shape
 
-typedef struct cursor_entry {
+typedef struct {
   char *full_name;        ///< mode description
   CursorShape shape;      ///< cursor shape: one of the SHAPE_ defines
   int mshape;             ///< mouse shape: one of the MSHAPE defines
   int percentage;         ///< percentage of cell for bar
-  long blinkwait;         ///< blinking, wait time before blinking starts
-  long blinkon;           ///< blinking, on time
-  long blinkoff;          ///< blinking, off time
+  int blinkwait;          ///< blinking, wait time before blinking starts
+  int blinkon;            ///< blinking, on time
+  int blinkoff;           ///< blinking, off time
   int id;                 ///< highlight group ID
   int id_lm;              ///< highlight group ID for :lmap mode
   char *name;             ///< mode short name
@@ -58,4 +58,3 @@ extern cursorentry_T shape_table[SHAPE_IDX_COUNT];
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "cursor_shape.h.generated.h"
 #endif
-#endif  // NVIM_CURSOR_SHAPE_H

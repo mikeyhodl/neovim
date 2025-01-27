@@ -122,9 +122,6 @@ modifications.
 .It Fl b
 Binary mode.
 .Ic ":help edit-binary"
-.It Fl l
-Lisp mode.
-Sets the 'lisp' and 'showmatch' options.
 .It Fl A
 Arabic mode.
 Sets the 'arabic' option.
@@ -144,7 +141,7 @@ is specified, append messages to
 instead of printing them.
 .Ic ":help 'verbose'"
 .It Fl D
-Debug mode for VimL (Vim script).
+Vimscript debug mode.
 Started when executing the first command from a script.
 :help debug-mode
 .It Fl n
@@ -196,7 +193,7 @@ is
 do not read or write a ShaDa file.
 .Ic ":help shada"
 .It Fl -noplugin
-Skip loading plugins.
+Skip loading plugins (by setting the 'noloadplugins' option).
 Implied by
 .Cm -u NONE .
 .It Fl -clean
@@ -268,10 +265,26 @@ but execute
 before processing any vimrc.
 Up to 10 instances of these can be used independently from instances of
 .Fl c .
+.It Fl l Ar script Op Ar args
+Execute Lua
+.Ar script
+with optional
+.Op Ar args
+after processing any preceding Nvim startup arguments.
+All
+.Op Ar args
+are treated as script arguments and are passed literally to Lua, that is,
+.Fl l
+stops processing of Nvim arguments.
+.Ic ":help -l"
 .It Fl S Op Ar session
-Source
+Execute
 .Ar session
-after the first file argument has been read.
+after the first file argument has been read. If
+.Ar session
+filename ends with
+.Pa .lua
+it is executed as Lua instead of Vimscript.
 Equivalent to
 .Cm -c \(dqsource session\(dq .
 .Ar session
@@ -326,6 +339,11 @@ Print version information and exit.
 .El
 .Sh ENVIRONMENT
 .Bl -tag -width Fl
+.It Ev NVIM_APPNAME
+The name of sub-directories used within each XDG user directory.
+Defaults to
+.Cm nvim .
+:help $NVIM_APPNAME
 .It Ev NVIM_LOG_FILE
 Low-level log file, usually found at ~/.local/state/nvim/log.
 :help $NVIM_LOG_FILE
@@ -369,10 +387,10 @@ features like
 .El
 .Sh FILES
 .Bl -tag -width "~/.config/nvim/init.vim"
-.It Pa ~/.config/nvim/init.vim
+.It Pa ~/.config/nvim/init.lua
 User-local
 .Nm
-configuration file.
+Lua configuration file.
 .It Pa ~/.config/nvim
 User-local
 .Nm

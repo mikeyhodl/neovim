@@ -1,10 +1,14 @@
 -- Test for mappings and abbreviations
 
-local helpers = require('test.functional.helpers')(after_each)
-local clear, feed, insert = helpers.clear, helpers.feed, helpers.insert
-local expect, poke_eventloop = helpers.expect, helpers.poke_eventloop
-local command, eq, eval, meths = helpers.command, helpers.eq, helpers.eval, helpers.meths
-local sleep = helpers.sleep
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+local Screen = require('test.functional.ui.screen')
+
+local clear, feed, insert = n.clear, n.feed, n.insert
+local expect, poke_eventloop = n.expect, n.poke_eventloop
+local command, eq, eval, api = n.command, t.eq, n.eval, n.api
+local exec = n.exec
+local sleep = vim.uv.sleep
 
 describe('mapping', function()
   before_each(clear)
@@ -23,6 +27,7 @@ describe('mapping', function()
       vim ]])
   end)
 
+  -- oldtest: Test_map_ctrl_c_insert()
   it('Ctrl-c works in Insert mode', function()
     -- Mapping of ctrl-c in insert mode
     command('set cpo-=< cpo-=k')
@@ -41,6 +46,7 @@ describe('mapping', function()
       ]])
   end)
 
+  -- oldtest: Test_map_ctrl_c_visual()
   it('Ctrl-c works in Visual mode', function()
     command([[vnoremap <c-c> :<C-u>$put ='vmap works'<cr>]])
     feed('GV')
@@ -83,6 +89,7 @@ describe('mapping', function()
       +]])
   end)
 
+  -- oldtest: Test_map_feedkeys()
   it('feedkeys', function()
     insert([[
       a b c d
@@ -100,6 +107,7 @@ describe('mapping', function()
       ]])
   end)
 
+  -- oldtest: Test_map_cursor()
   it('i_CTRL-G_U', function()
     -- <c-g>U<cursor> works only within a single line
     command('imapclear')
@@ -110,7 +118,9 @@ describe('mapping', function()
     command('imapclear')
     command('set whichwrap=<,>,[,]')
     feed('G3o<esc>2k')
-    command([[:exe ":norm! iTest3: text with a (parenthesis here\<C-G>U\<Right>new line here\<esc>\<up>\<up>."]])
+    command(
+      [[:exe ":norm! iTest3: text with a (parenthesis here\<C-G>U\<Right>new line here\<esc>\<up>\<up>."]]
+    )
 
     expect([[
 
@@ -126,28 +136,30 @@ describe('mapping', function()
       ]])
   end)
 
-  it('dragging starts Select mode even if coming from mapping vim-patch:8.2.4806', function()
+  -- oldtest: Test_mouse_drag_mapped_start_select()
+  it('dragging starts Select mode even if coming from mapping', function()
     command('set mouse=a')
     command('set selectmode=mouse')
 
     command('nnoremap <LeftDrag> <LeftDrag><Cmd><CR>')
     poke_eventloop()
-    meths.input_mouse('left', 'press', '', 0, 0, 0)
+    api.nvim_input_mouse('left', 'press', '', 0, 0, 0)
     poke_eventloop()
-    meths.input_mouse('left', 'drag', '', 0, 0, 1)
+    api.nvim_input_mouse('left', 'drag', '', 0, 0, 1)
     poke_eventloop()
     eq('s', eval('mode()'))
   end)
 
-  it('<LeftDrag> mapping in Insert mode works correctly vim-patch:8.2.4692', function()
+  -- oldtest: Test_mouse_drag_insert_map()
+  it('<LeftDrag> mapping in Insert mode works correctly', function()
     command('set mouse=a')
 
     command('inoremap <LeftDrag> <LeftDrag><Cmd>let g:dragged = 1<CR>')
     feed('i')
     poke_eventloop()
-    meths.input_mouse('left', 'press', '', 0, 0, 0)
+    api.nvim_input_mouse('left', 'press', '', 0, 0, 0)
     poke_eventloop()
-    meths.input_mouse('left', 'drag', '', 0, 0, 1)
+    api.nvim_input_mouse('left', 'drag', '', 0, 0, 1)
     poke_eventloop()
     eq(1, eval('g:dragged'))
     eq('v', eval('mode()'))
@@ -156,14 +168,15 @@ describe('mapping', function()
     command([[inoremap <LeftDrag> <LeftDrag><C-\><C-N>]])
     feed('i')
     poke_eventloop()
-    meths.input_mouse('left', 'press', '', 0, 0, 0)
+    api.nvim_input_mouse('left', 'press', '', 0, 0, 0)
     poke_eventloop()
-    meths.input_mouse('left', 'drag', '', 0, 0, 1)
+    api.nvim_input_mouse('left', 'drag', '', 0, 0, 1)
     poke_eventloop()
     eq('n', eval('mode()'))
   end)
 
-  it('timeout works after an <Nop> mapping is triggered on timeout vim-patch:8.1.0052', function()
+  -- oldtest: Test_map_after_timed_out_nop()
+  it('timeout works after an <Nop> mapping is triggered on timeout', function()
     command('set timeout timeoutlen=400')
     command('inoremap ab TEST')
     command('inoremap a <Nop>')
@@ -178,5 +191,62 @@ describe('mapping', function()
     -- Send "b", should trigger the "ab" mapping
     feed('b')
     expect('TEST')
+  end)
+
+  -- oldtest: Test_showcmd_part_map()
+  it("'showcmd' with a partial mapping", function()
+    local screen = Screen.new(60, 6)
+    exec([[
+      set notimeout showcmd
+      nnoremap ,a <Ignore>
+      nnoremap ;a <Ignore>
+      nnoremap Àa <Ignore>
+      nnoremap Ëa <Ignore>
+      nnoremap βa <Ignore>
+      nnoremap ωa <Ignore>
+      nnoremap …a <Ignore>
+      nnoremap <C-W>a <Ignore>
+    ]])
+
+    for _, c in ipairs({ ',', ';', 'À', 'Ë', 'β', 'ω', '…' }) do
+      feed(c)
+      screen:expect(([[
+        ^                                                            |
+        {1:~                                                           }|*4
+                                                         %s          |
+      ]]):format(c))
+      feed('a')
+      screen:expect([[
+        ^                                                            |
+        {1:~                                                           }|*4
+                                                                    |
+      ]])
+    end
+
+    feed('\23')
+    screen:expect([[
+      ^                                                            |
+      {1:~                                                           }|*4
+                                                       ^W         |
+    ]])
+    feed('a')
+    screen:expect([[
+      ^                                                            |
+      {1:~                                                           }|*4
+                                                                  |
+    ]])
+
+    feed('<C-W>')
+    screen:expect([[
+      ^                                                            |
+      {1:~                                                           }|*4
+                                                       ^W         |
+    ]])
+    feed('a')
+    screen:expect([[
+      ^                                                            |
+      {1:~                                                           }|*4
+                                                                  |
+    ]])
   end)
 end)

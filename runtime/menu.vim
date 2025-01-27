@@ -1,8 +1,9 @@
 " Vim support file to define the default menus
 " You can also use this as a start for your own set of menus.
 "
-" Maintainer:	Bram Moolenaar <Bram@vim.org>
-" Last Change:	2020 Mar 29
+" Maintainer:	The Vim Project <https://github.com/vim/vim>
+" Last Change:	2023 Aug 10
+" Former Maintainer:	Bram Moolenaar <Bram@vim.org>
 
 " Note that ":an" (short for ":anoremenu") is often used to make a menu work
 " in all modes and avoid side effects from mappings defined by the user.
@@ -89,6 +90,21 @@ an 9999.75 &Help.-sep2-			<Nop>
 an 9999.80 &Help.&Version		:version<CR>
 an 9999.90 &Help.&About			:intro<CR>
 
+if exists(':tlmenu')
+  tlnoremenu 9999.10 &Help.&Overview<Tab><F1>		<C-W>:help<CR>
+  tlnoremenu 9999.20 &Help.&User\ Manual		<C-W>:help usr_toc<CR>
+  tlnoremenu 9999.30 &Help.&How-To\ Links		<C-W>:help how-to<CR>
+  tlnoremenu <silent> 9999.40 &Help.&Find\.\.\.		<C-W>:call <SID>Helpfind()<CR>
+  tlnoremenu 9999.45 &Help.-sep1-			<Nop>
+  tlnoremenu 9999.50 &Help.&Credits			<C-W>:help credits<CR>
+  tlnoremenu 9999.60 &Help.Co&pying			<C-W>:help copying<CR>
+  tlnoremenu 9999.70 &Help.&Sponsor/Register		<C-W>:help sponsor<CR>
+  tlnoremenu 9999.70 &Help.O&rphans			<C-W>:help kcc<CR>
+  tlnoremenu 9999.75 &Help.-sep2-			<Nop>
+  tlnoremenu 9999.80 &Help.&Version			<C-W>:version<CR>
+  tlnoremenu 9999.90 &Help.&About			<C-W>:intro<CR>
+endif
+
 fun! s:Helpfind()
   if !exists("g:menutrans_help_dialog")
     let g:menutrans_help_dialog = "Enter a command or word to find help on:\n\nPrepend i_ for Input mode commands (e.g.: i_CTRL-X)\nPrepend c_ for command-line editing commands (e.g.: c_<Del>)\nPrepend ' for an option name (e.g.: 'shiftwidth')"
@@ -106,7 +122,7 @@ endfun
 " File menu
 an 10.310 &File.&Open\.\.\.<Tab>:e		:browse confirm e<CR>
 an 10.320 &File.Sp&lit-Open\.\.\.<Tab>:sp	:browse sp<CR>
-an 10.320 &File.Open\ Tab\.\.\.<Tab>:tabnew	:browse tabnew<CR>
+an 10.320 &File.Open\ &Tab\.\.\.<Tab>:tabnew	:browse tabnew<CR>
 an 10.325 &File.&New<Tab>:enew			:confirm enew<CR>
 an <silent> 10.330 &File.&Close<Tab>:close
 	\ :if winheight(2) < 0 && tabpagewinnr(2) == 0 <Bar>
@@ -124,12 +140,7 @@ if has("diff")
   an 10.420 &File.Split\ Patched\ &By\.\.\.	:browse vert diffpatch<CR>
 endif
 
-if has("printer")
-  an 10.500 &File.-SEP3-			<Nop>
-  an 10.510 &File.&Print			:hardcopy<CR>
-  vunmenu   &File.&Print
-  vnoremenu &File.&Print			:hardcopy<CR>
-elseif has("unix")
+if has("unix")
   an 10.500 &File.-SEP3-			<Nop>
   an 10.510 &File.&Print			:w !lpr<CR>
   vunmenu   &File.&Print
@@ -589,7 +600,9 @@ func s:XxdBack()
     exe ':%!' . g:xxdprogram . ' -r'
   endif
   set ft=
-  doautocmd filetypedetect BufReadPost
+  if exists('#filetypedetect') && exists('#BufReadPost')
+    doautocmd filetypedetect BufReadPost
+  endif
   let &mod = mod
 endfun
 
@@ -699,6 +712,11 @@ endfunc
 func s:BMCanAdd(name, num)
   " no directory or unlisted buffer
   if isdirectory(a:name) || !buflisted(a:num)
+    return 0
+  endif
+
+  " no name with control characters
+  if a:name =~ '[\x01-\x1f]'
     return 0
   endif
 
@@ -1049,11 +1067,7 @@ if has("toolbar")
   an <silent> 1.20 ToolBar.Save		:if expand("%") == ""<Bar>browse confirm w<Bar>else<Bar>confirm w<Bar>endif<CR>
   an 1.30 ToolBar.SaveAll		:browse confirm wa<CR>
 
-  if has("printer")
-    an 1.40   ToolBar.Print		:hardcopy<CR>
-    vunmenu   ToolBar.Print
-    vnoremenu ToolBar.Print		:hardcopy<CR>
-  elseif has("unix")
+  if has("unix")
     an 1.40   ToolBar.Print		:w !lpr<CR>
     vunmenu   ToolBar.Print
     vnoremenu ToolBar.Print		:w !lpr<CR>
@@ -1116,7 +1130,7 @@ else
   endif
   tmenu ToolBar.LoadSesn	Choose a session to load
   tmenu ToolBar.SaveSesn	Save current session
-  tmenu ToolBar.RunScript	Choose a Vim Script to run
+  tmenu ToolBar.RunScript	Choose a Vim script to run
   tmenu ToolBar.Make		Make current project (:make)
   tmenu ToolBar.RunCtags	Build tags in current directory tree (!ctags -R .)
   tmenu ToolBar.TagJump		Jump to tag under cursor

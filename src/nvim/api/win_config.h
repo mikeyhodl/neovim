@@ -1,9 +1,10 @@
-#ifndef NVIM_API_WIN_CONFIG_H
-#define NVIM_API_WIN_CONFIG_H
+#pragma once
 
-#include "nvim/api/private/defs.h"
+#include <stdint.h>  // IWYU pragma: keep
+
+#include "nvim/api/keysets_defs.h"  // IWYU pragma: keep
+#include "nvim/api/private/defs.h"  // IWYU pragma: keep
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "api/win_config.h.generated.h"
 #endif
-#endif  // NVIM_API_WIN_CONFIG_H

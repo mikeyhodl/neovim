@@ -1,33 +1,35 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
 
-local clear = helpers.clear
-local command = helpers.command
-local dedent = helpers.dedent
-local eq = helpers.eq
-local funcs = helpers.funcs
-local eval = helpers.eval
-local exec = helpers.exec
-local feed = helpers.feed
+local clear = n.clear
+local command = n.command
+local dedent = t.dedent
+local eq = t.eq
+local fn = n.fn
+local eval = n.eval
+local exec = n.exec
+local feed = n.feed
 
-describe(":autocmd", function()
+describe(':autocmd', function()
   before_each(function()
-    clear({'-u', 'NONE'})
+    clear({ '-u', 'NONE' })
   end)
 
-  it("should not segfault when you just do autocmd", function()
-    command ":autocmd"
+  it('should not segfault when you just do autocmd', function()
+    command ':autocmd'
   end)
 
-  it("should filter based on ++once", function()
-    command "autocmd! BufEnter"
+  it('should filter based on ++once', function()
+    command 'autocmd! BufEnter'
     command "autocmd BufEnter * :echo 'Hello'"
     command [[augroup TestingOne]]
     command [[  autocmd BufEnter * :echo "Line 1"]]
     command [[  autocmd BufEnter * :echo "Line 2"]]
     command [[augroup END]]
 
-    eq(dedent([[
+    eq(
+      dedent([[
 
        --- Autocommands ---
        BufEnter
@@ -35,17 +37,15 @@ describe(":autocmd", function()
        TestingOne  BufEnter
            *         :echo "Line 1"
                      :echo "Line 2"]]),
-       funcs.execute('autocmd BufEnter'))
+      fn.execute('autocmd BufEnter')
+    )
   end)
 
   it('should not show group information if interrupted', function()
     local screen = Screen.new(50, 6)
-    screen:set_default_attr_ids({
-      [1] = {bold = true, foreground = Screen.colors.Blue1},  -- NonText
-      [2] = {bold = true, foreground = Screen.colors.SeaGreen},  -- MoreMsg
-      [3] = {bold = true, foreground = Screen.colors.Magenta},  -- Title
-    })
-    screen:attach()
+    screen:add_extra_attr_ids {
+      [100] = { foreground = Screen.colors.Magenta, bold = true },
+    }
     exec([[
       set more
       autocmd! BufEnter
@@ -70,19 +70,16 @@ describe(":autocmd", function()
     feed(':autocmd<CR>')
     screen:expect([[
       :autocmd                                          |
-      {3:--- Autocommands ---}                              |
-      {3:test_1}  {3:BufEnter}                                  |
+      {100:--- Autocommands ---}                              |
+      {100:test_1}  {100:BufEnter}                                  |
           A         echo 'A'                            |
           B         echo 'B'                            |
-      {2:-- More --}^                                        |
+      {6:-- More --}^                                        |
     ]])
     feed('q')
     screen:expect([[
       ^                                                  |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
+      {1:~                                                 }|*4
                                                         |
     ]])
   end)
@@ -112,7 +109,8 @@ describe(":autocmd", function()
       autocmd User foo call Func()
       doautocmd User foo
     ]])
-    eq(dedent([[
+    eq(
+      dedent([[
 
       --- Autocommands ---
       test_1  BufEnter
@@ -122,7 +120,9 @@ describe(":autocmd", function()
       test_3  BufEnter
           D         echo 'D'
           E         echo 'E'
-          F         echo 'F']]), eval('g:output'))
+          F         echo 'F']]),
+      eval('g:output')
+    )
   end)
 
   it('can filter by pattern #17973', function()
@@ -148,7 +148,8 @@ describe(":autocmd", function()
         autocmd User B echo "B3"
       augroup END
     ]])
-    eq(dedent([[
+    eq(
+      dedent([[
 
       --- Autocommands ---
       test_1  User
@@ -156,8 +157,11 @@ describe(":autocmd", function()
       test_2  User
           A         echo "A2"
       test_3  User
-          A         echo "A3"]]), funcs.execute('autocmd User A'))
-    eq(dedent([[
+          A         echo "A3"]]),
+      fn.execute('autocmd User A')
+    )
+    eq(
+      dedent([[
 
       --- Autocommands ---
       test_1  BufEnter
@@ -171,13 +175,62 @@ describe(":autocmd", function()
       test_2  User
           B         echo "B2"
       test_3  User
-          B         echo "B3"]]), funcs.execute('autocmd * B'))
-    eq(dedent([[
+          B         echo "B3"]]),
+      fn.execute('autocmd * B')
+    )
+    eq(
+      dedent([[
 
       --- Autocommands ---
       test_3  BufEnter
           B         echo "B3"
       test_3  User
-          B         echo "B3"]]), funcs.execute('autocmd test_3 * B'))
+          B         echo "B3"]]),
+      fn.execute('autocmd test_3 * B')
+    )
+  end)
+
+  it('should skip consecutive patterns', function()
+    exec([[
+      autocmd! BufEnter
+      augroup test_1
+        autocmd BufEnter A echo 'A'
+        autocmd BufEnter A echo 'B'
+        autocmd BufEnter A echo 'C'
+        autocmd BufEnter B echo 'D'
+        autocmd BufEnter B echo 'E'
+        autocmd BufEnter B echo 'F'
+      augroup END
+      augroup test_2
+        autocmd BufEnter C echo 'A'
+        autocmd BufEnter C echo 'B'
+        autocmd BufEnter C echo 'C'
+        autocmd BufEnter D echo 'D'
+        autocmd BufEnter D echo 'E'
+        autocmd BufEnter D echo 'F'
+      augroup END
+
+      let g:output = execute('autocmd BufEnter')
+    ]])
+    eq(
+      dedent([[
+
+      --- Autocommands ---
+      test_1  BufEnter
+          A         echo 'A'
+                    echo 'B'
+                    echo 'C'
+          B         echo 'D'
+                    echo 'E'
+                    echo 'F'
+      test_2  BufEnter
+          C         echo 'A'
+                    echo 'B'
+                    echo 'C'
+          D         echo 'D'
+                    echo 'E'
+                    echo 'F']]),
+      eval('g:output')
+    )
   end)
 end)

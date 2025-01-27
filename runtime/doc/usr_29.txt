@@ -34,7 +34,7 @@ following command: >
 
 "ctags" is a separate program.  Most Unix systems already have it installed.
 If you do not have it yet, you can find Universal ctags at:
-	https://ctags.io ~
+	https://ctags.io
 
 Universal ctags is preferred, Exuberant ctags is no longer being developed.
 
@@ -53,7 +53,7 @@ function.
    The "write_line" function calls "write_char".  You need to figure out what
 it does.  So you position the cursor over the call to "write_char" and press
 CTRL-].  Now you are at the definition of "write_char".
-
+>
 	+-------------------------------------+
 	|void write_block(char **s; int cnt)  |
 	|{				      |
@@ -79,7 +79,7 @@ CTRL-].  Now you are at the definition of "write_char".
 				       |    putchar((int)(unsigned char)c); |
 				       |}				    |
 				       +------------------------------------+
-
+<
 The ":tags" command shows the list of tags that you traversed through:
 
 	:tags
@@ -87,7 +87,7 @@ The ":tags" command shows the list of tags that you traversed through:
 	  1  1 write_line	   8  write_block.c ~
 	  2  1 write_char	   7  write_line.c ~
 	> ~
->
+<
 Now to go back.  The CTRL-T command goes to the preceding tag.  In the example
 above you get back to the "write_line" function, in the call to "write_char".
    This command takes a count argument that indicates how many tags to jump
@@ -307,9 +307,9 @@ tags file.  Example: >
 	:psearch popen
 
 This will show the "stdio.h" file in the preview window, with the function
-prototype for popen():
+prototype for popen(): >c
 
-	FILE	*popen __P((const char *, const char *)); ~
+	FILE	*popen __P((const char *, const char *));
 
 You can specify the height of the preview window, when it is opened, with the
 'previewheight' option.
@@ -319,13 +319,13 @@ You can specify the height of the preview window, when it is opened, with the
 
 Since a program is structured, Vim can recognize items in it.  Specific
 commands can be used to move around.
-   C programs often contain constructs like this:
+   C programs often contain constructs like this: >c
 
-	#ifdef USE_POPEN ~
-	    fd = popen("ls", "r") ~
-	#else ~
-	    fd = fopen("tmp", "w") ~
-	#endif ~
+	#ifdef USE_POPEN
+	    fd = popen("ls", "r")
+	#else
+	    fd = fopen("tmp", "w")
+	#endif
 
 But then much longer, and possibly nested.  Position the cursor on the
 "#ifdef" and press %.  Vim will jump to the "#else".  Pressing % again takes
@@ -361,7 +361,7 @@ MOVING IN CODE BLOCKS
 In C code blocks are enclosed in {}.  These can get pretty long.  To move to
 the start of the outer block use the "[[" command.  Use "][" to find the end.
 This assumes that the "{" and "}" are in the first column.
-   The "[{" command moves to the start of the current block.  It skips over
+   The [{ command moves to the start of the current block.  It skips over
 pairs of {} at the same level.  "]}" jumps to the end.
    An overview:
 
@@ -410,7 +410,7 @@ That also works when they are many lines apart.
 
 MOVING IN BRACES
 
-The "[(" and "])" commands work similar to "[{" and "]}", except that they
+The [( and ]) commands work similar to [{ and ]}, except that they
 work on () pairs instead of {} pairs.
 >
 				  [(
@@ -424,8 +424,8 @@ work on () pairs instead of {} pairs.
 MOVING IN COMMENTS
 
 To move back to the start of a comment use "[/".  Move forward to the end of a
-comment with "]/".  This only works for /* - */ comments.
-
+comment with "]/".  This only works for `/* - */` comments.
+>
 	  +->	  +-> /*
 	  |    [/ |    * A comment about      --+
        [/ |	  +--  * wonderful life.	| ]/
@@ -434,7 +434,7 @@ comment with "]/".  This only works for /* - */ comments.
 	  +--	       foo = bar * 3;	      --+
 						| ]/
 		       /* a short comment */  <-+
-
+<
 ==============================================================================
 *29.4*	Finding global identifiers
 
@@ -446,10 +446,10 @@ You are editing a C program and wonder if a variable is declared as "int" or
 
 Vim will list the matching lines it can find.  Not only in the current file,
 but also in all included files (and files included in them, etc.).  The result
-looks like this:
+looks like this: >
 
-	structs.h ~
-	 1:   29     unsigned     column;    /* column number */ ~
+	structs.h
+	 1:   29     unsigned     column;    /* column number */
 
 The advantage over using tags or the preview window is that included files are
 searched.  In most cases this results in the right declaration to be found.
@@ -575,7 +575,7 @@ and jump to the first place where the word under the cursor is used: >
 Hint: Goto Definition.  This command is very useful to find a variable or
 function that was declared locally ("static", in C terms).  Example (cursor on
 "counter"):
-
+>
 	   +->   static int counter = 0;
 	   |
 	   |     int get_counter(void)
@@ -583,7 +583,7 @@ function that was declared locally ("static", in C terms).  Example (cursor on
 	   |	     ++counter;
 	   +--	     return counter;
 		 }
-
+<
 To restrict the search even further, and look only in the current function,
 use this command: >
 
@@ -593,7 +593,7 @@ This will go back to the start of the current function and find the first
 occurrence of the word under the cursor.  Actually, it searches backwards to
 an empty line above a "{" in the first column.  From there it searches forward
 for the identifier.  Example (cursor on "idx"):
-
+>
 		int find_entry(char *name)
 		{
 	   +->	    int idx;
@@ -602,7 +602,7 @@ for the identifier.  Example (cursor on "idx"):
 	   |		if (strcmp(table[idx].name, name) == 0)
 	   +--		    return idx;
 		}
-
+<
 ==============================================================================
 
 Next chapter: |usr_30.txt|  Editing programs

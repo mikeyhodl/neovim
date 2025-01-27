@@ -1,10 +1,11 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local eq = helpers.eq
-local eval = helpers.eval
-local feed = helpers.feed
-local clear = helpers.clear
-local command = helpers.command
+local eq = t.eq
+local eval = n.eval
+local feed = n.feed
+local clear = n.clear
+local command = n.command
 
 describe('v:count/v:count1', function()
   before_each(function()

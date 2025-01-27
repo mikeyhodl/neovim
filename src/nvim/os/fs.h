@@ -1,10 +1,13 @@
-#ifndef NVIM_OS_FS_H
-#define NVIM_OS_FS_H
+#pragma once
 
-#include "nvim/os/fs_defs.h"  // for uv_*
-#include "nvim/types.h"  // for char_u
+#include <stddef.h>  // IWYU pragma: keep
+#include <stdint.h>  // IWYU pragma: keep
+#include <stdio.h>  // IWYU pragma: keep
+#include <uv.h>  // IWYU pragma: keep
+
+#include "nvim/os/fs_defs.h"  // IWYU pragma: keep
+#include "nvim/types_defs.h"  // IWYU pragma: keep
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "os/fs.h.generated.h"
 #endif
-#endif  // NVIM_OS_FS_H

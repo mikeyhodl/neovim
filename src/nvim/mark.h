@@ -1,56 +1,18 @@
-#ifndef NVIM_MARK_H
-#define NVIM_MARK_H
+#pragma once
 
-#include "nvim/ascii.h"
-#include "nvim/buffer_defs.h"
-#include "nvim/ex_cmds_defs.h"  // for exarg_T
-#include "nvim/extmark_defs.h"
-#include "nvim/func_attr.h"
-#include "nvim/macros.h"
-#include "nvim/mark_defs.h"
-#include "nvim/memory.h"
+#include <locale.h>
+
+#include "nvim/ascii_defs.h"
+#include "nvim/ex_cmds_defs.h"  // IWYU pragma: keep
+#include "nvim/extmark_defs.h"  // IWYU pragma: keep
+#include "nvim/macros_defs.h"
+#include "nvim/mark_defs.h"  // IWYU pragma: keep
 #include "nvim/os/time.h"
-#include "nvim/pos.h"
 
-/// Set fmark using given value
-#define SET_FMARK(fmarkp_, mark_, fnum_, view_) \
-  do { \
-    fmark_T *const fmarkp__ = fmarkp_; \
-    fmarkp__->mark = mark_; \
-    fmarkp__->fnum = fnum_; \
-    fmarkp__->timestamp = os_time(); \
-    fmarkp__->view = view_; \
-    fmarkp__->additional_data = NULL; \
-  } while (0)
-
-/// Free and set fmark using given value
-#define RESET_FMARK(fmarkp_, mark_, fnum_, view_) \
-  do { \
-    fmark_T *const fmarkp___ = fmarkp_; \
-    free_fmark(*fmarkp___); \
-    SET_FMARK(fmarkp___, mark_, fnum_, view_); \
-  } while (0)
-
-/// Clear given fmark
-#define CLEAR_FMARK(fmarkp_) \
-  RESET_FMARK(fmarkp_, ((pos_T) { 0, 0, 0 }), 0, ((fmarkv_T) { 0 }))
-
-/// Set given extended mark (regular mark + file name)
-#define SET_XFMARK(xfmarkp_, mark_, fnum_, view_, fname_) \
-  do { \
-    xfmark_T *const xfmarkp__ = xfmarkp_; \
-    xfmarkp__->fname = fname_; \
-    SET_FMARK(&(xfmarkp__->fmark), mark_, fnum_, view_); \
-  } while (0)
-
-/// Free and set given extended mark (regular mark + file name)
-#define RESET_XFMARK(xfmarkp_, mark_, fnum_, view_, fname_) \
-  do { \
-    xfmark_T *const xfmarkp__ = xfmarkp_; \
-    free_xfmark(*xfmarkp__); \
-    xfmarkp__->fname = fname_; \
-    SET_FMARK(&(xfmarkp__->fmark), mark_, fnum_, view_); \
-  } while (0)
+#ifdef INCLUDE_GENERATED_DECLARATIONS
+# include "mark.h.generated.h"
+# include "mark.h.inline.generated.h"
+#endif
 
 /// Convert mark name to the offset
 static inline int mark_global_index(const char name)
@@ -78,48 +40,40 @@ static inline int mark_local_index(const char name)
                    : -1))));
 }
 
-static inline bool lt(pos_T a, pos_T b)
-  REAL_FATTR_CONST REAL_FATTR_ALWAYS_INLINE;
-static inline bool equalpos(pos_T a, pos_T b)
-  REAL_FATTR_CONST REAL_FATTR_ALWAYS_INLINE;
-static inline bool ltoreq(pos_T a, pos_T b)
-  REAL_FATTR_CONST REAL_FATTR_ALWAYS_INLINE;
-static inline void clearpos(pos_T *a)
-  REAL_FATTR_ALWAYS_INLINE;
+/// Global marks (marks with file number or name)
+EXTERN xfmark_T namedfm[NGLOBALMARKS] INIT( = { 0 });
 
-/// Return true if position a is before (less than) position b.
-static inline bool lt(pos_T a, pos_T b)
-{
-  if (a.lnum != b.lnum) {
-    return a.lnum < b.lnum;
-  } else if (a.col != b.col) {
-    return a.col < b.col;
-  } else {
-    return a.coladd < b.coladd;
-  }
-}
+#define SET_FMARK(fmarkp_, mark_, fnum_, view_) \
+  do { \
+    fmark_T *const fmarkp__ = fmarkp_; \
+    fmarkp__->mark = mark_; \
+    fmarkp__->fnum = fnum_; \
+    fmarkp__->timestamp = os_time(); \
+    fmarkp__->view = view_; \
+    fmarkp__->additional_data = NULL; \
+  } while (0)
 
-/// Return true if position a and b are equal.
-static inline bool equalpos(pos_T a, pos_T b)
-{
-  return (a.lnum == b.lnum) && (a.col == b.col) && (a.coladd == b.coladd);
-}
+/// Free and set fmark using given value
+#define RESET_FMARK(fmarkp_, mark_, fnum_, view_) \
+  do { \
+    fmark_T *const fmarkp___ = fmarkp_; \
+    free_fmark(*fmarkp___); \
+    SET_FMARK(fmarkp___, mark_, fnum_, view_); \
+  } while (0)
 
-/// Return true if position a is less than or equal to b.
-static inline bool ltoreq(pos_T a, pos_T b)
-{
-  return lt(a, b) || equalpos(a, b);
-}
+/// Set given extended mark (regular mark + file name)
+#define SET_XFMARK(xfmarkp_, mark_, fnum_, view_, fname_) \
+  do { \
+    xfmark_T *const xfmarkp__ = xfmarkp_; \
+    xfmarkp__->fname = fname_; \
+    SET_FMARK(&(xfmarkp__->fmark), mark_, fnum_, view_); \
+  } while (0)
 
-/// Clear the pos_T structure pointed to by a.
-static inline void clearpos(pos_T *a)
-{
-  a->lnum = 0;
-  a->col = 0;
-  a->coladd = 0;
-}
-
-#ifdef INCLUDE_GENERATED_DECLARATIONS
-# include "mark.h.generated.h"
-#endif
-#endif  // NVIM_MARK_H
+/// Free and set given extended mark (regular mark + file name)
+#define RESET_XFMARK(xfmarkp_, mark_, fnum_, view_, fname_) \
+  do { \
+    xfmark_T *const xfmarkp__ = xfmarkp_; \
+    free_xfmark(*xfmarkp__); \
+    xfmarkp__->fname = fname_; \
+    SET_FMARK(&(xfmarkp__->fmark), mark_, fnum_, view_); \
+  } while (0)

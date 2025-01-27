@@ -3,17 +3,20 @@
 -- Also test that a builtin function cannot be replaced.
 -- Also test for regression when calling arbitrary expression.
 
-local helpers = require('test.functional.helpers')(after_each)
-local feed, insert, source = helpers.feed, helpers.insert, helpers.source
-local clear, feed_command, expect = helpers.clear, helpers.feed_command, helpers.expect
+local n = require('test.functional.testnvim')()
 
-describe('user functions, expr-mappings, overwrite protected builtin functions and regression on calling expressions', function()
-  setup(clear)
+local feed, insert, source = n.feed, n.insert, n.source
+local clear, feed_command, expect = n.clear, n.feed_command, n.expect
 
-  it('are working', function()
-    insert('here')
+describe(
+  'user functions, expr-mappings, overwrite protected builtin functions and regression on calling expressions',
+  function()
+    setup(clear)
 
-    source([[
+    it('are working', function()
+      insert('here')
+
+      source([[
       function Table(title, ...)
         let ret = a:title
         let idx = 1
@@ -59,35 +62,35 @@ describe('user functions, expr-mappings, overwrite protected builtin functions a
       let retval = "nop"
       /^here
     ]])
-    feed('C<C-R>=Table("xxx", 4, "asdf")<cr>')
-    -- Using a actual space will not work as feed() calls dedent on the input.
-    feed('<space><C-R>=Compute(45, 0, "retval")<cr>')
-    feed('<space><C-R>=retval<cr>')
-    feed('<space><C-R>=Compute(45, 5, "retval")<cr>')
-    feed('<space><C-R>=retval<cr>')
-    feed('<space><C-R>=g:FuncRef(333)<cr>')
-    feed('<cr>')
-    feed('XX+-XX<cr>')
-    feed('---*---<cr>')
-    feed('(one<cr>')
-    feed('(two<cr>')
-    feed('[(one again<esc>')
-    feed_command('call append(line("$"), max([1, 2, 3]))')
-    feed_command('call extend(g:, {"max": function("min")})')
-    feed_command('call append(line("$"), max([1, 2, 3]))')
-    feed_command('try')
-    -- Regression: the first line below used to throw "E110: Missing ')'"
-    -- Second is here just to prove that this line is correct when not
-    -- skipping rhs of &&.
-    feed_command([[    $put =(0&&(function('tr'))(1, 2, 3))]])
-    feed_command([[    $put =(1&&(function('tr'))(1, 2, 3))]])
-    feed_command('catch')
-    feed_command([[    $put ='!!! Unexpected exception:']])
-    feed_command('    $put =v:exception')
-    feed_command('endtry')
+      feed('C<C-R>=Table("xxx", 4, "asdf")<cr>')
+      -- Using a actual space will not work as feed() calls dedent on the input.
+      feed('<space><C-R>=Compute(45, 0, "retval")<cr>')
+      feed('<space><C-R>=retval<cr>')
+      feed('<space><C-R>=Compute(45, 5, "retval")<cr>')
+      feed('<space><C-R>=retval<cr>')
+      feed('<space><C-R>=g:FuncRef(333)<cr>')
+      feed('<cr>')
+      feed('XX+-XX<cr>')
+      feed('---*---<cr>')
+      feed('(one<cr>')
+      feed('(two<cr>')
+      feed('[(one again<esc>')
+      feed_command('call append(line("$"), max([1, 2, 3]))')
+      feed_command('call extend(g:, {"max": function("min")})')
+      feed_command('call append(line("$"), max([1, 2, 3]))')
+      feed_command('try')
+      -- Regression: the first line below used to throw "E110: Missing ')'"
+      -- Second is here just to prove that this line is correct when not
+      -- skipping rhs of &&.
+      feed_command([[    $put =(0&&(function('tr'))(1, 2, 3))]])
+      feed_command([[    $put =(1&&(function('tr'))(1, 2, 3))]])
+      feed_command('catch')
+      feed_command([[    $put ='!!! Unexpected exception:']])
+      feed_command('    $put =v:exception')
+      feed_command('endtry')
 
-    -- Assert buffer contents.
-    expect([[
+      -- Assert buffer contents.
+      expect([[
       xxx4asdf fail nop ok 9 333
       XX111-XX
       ---222---
@@ -98,5 +101,6 @@ describe('user functions, expr-mappings, overwrite protected builtin functions a
       3
       0
       1]])
-  end)
-end)
+    end)
+  end
+)

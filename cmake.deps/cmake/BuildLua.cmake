@@ -1,13 +1,13 @@
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set(LUA_TARGET linux)
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+elseif(APPLE)
   set(LUA_TARGET macosx)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
   set(LUA_TARGET freebsd)
 elseif(CMAKE_SYSTEM_NAME MATCHES "BSD")
-  set(CMAKE_LUA_TARGET bsd)
+  set(LUA_TARGET bsd)
 elseif(CMAKE_SYSTEM_NAME MATCHES "^MINGW")
-  set(CMAKE_LUA_TARGET mingw)
+  set(LUA_TARGET mingw)
 else()
   if(UNIX)
     set(LUA_TARGET posix)
@@ -16,10 +16,10 @@ else()
   endif()
 endif()
 
-set(LUA_CFLAGS "-O0 -g3 -fPIC")
+set(LUA_CFLAGS "-O2 -g3 -fPIC")
 set(LUA_LDFLAGS "")
 
-if(CLANG_ASAN_UBSAN)
+if(ENABLE_ASAN_UBSAN)
   set(LUA_CFLAGS "${LUA_CFLAGS} -fsanitize=address")
   set(LUA_CFLAGS "${LUA_CFLAGS} -fno-omit-frame-pointer")
   set(LUA_CFLAGS "${LUA_CFLAGS} -fno-optimize-sibling-calls")
@@ -40,30 +40,11 @@ set(LUA_CONFIGURE_COMMAND
       -i ${DEPS_BUILD_DIR}/src/lua/src/luaconf.h)
 set(LUA_INSTALL_TOP_ARG "INSTALL_TOP=${DEPS_INSTALL_DIR}")
 
-message(STATUS "Lua target is ${LUA_TARGET}")
-
-if(USE_EXISTING_SRC_DIR)
-  unset(LUA_URL)
-endif()
+get_externalproject_options(lua ${DEPS_IGNORE_SHA})
 ExternalProject_Add(lua
-  URL ${LUA_URL}
-  URL_HASH SHA256=${LUA_SHA256}
-  DOWNLOAD_NO_PROGRESS TRUE
   DOWNLOAD_DIR ${DEPS_DOWNLOAD_DIR}/lua
   CONFIGURE_COMMAND "${LUA_CONFIGURE_COMMAND}"
   BUILD_IN_SOURCE 1
   BUILD_COMMAND ${MAKE_PRG} ${LUA_INSTALL_TOP_ARG} ${LUA_TARGET}
-  INSTALL_COMMAND ${MAKE_PRG} ${LUA_INSTALL_TOP_ARG} install)
-
-list(APPEND THIRD_PARTY_DEPS lua)
-
-set(BUSTED ${DEPS_INSTALL_DIR}/bin/busted)
-set(BUSTED_LUA ${BUSTED}-lua)
-
-add_custom_command(OUTPUT ${BUSTED_LUA}
-  COMMAND sed -e 's/^exec/exec $$LUA_DEBUGGER/' -e 's/jit//g' < ${BUSTED} > ${BUSTED_LUA} && chmod +x ${BUSTED_LUA}
-  DEPENDS lua busted ${BUSTED})
-add_custom_target(busted-lua
-  DEPENDS ${DEPS_INSTALL_DIR}/bin/busted-lua)
-
-list(APPEND THIRD_PARTY_DEPS busted-lua)
+  INSTALL_COMMAND ${MAKE_PRG} ${LUA_INSTALL_TOP_ARG} install
+  ${EXTERNALPROJECT_OPTIONS})

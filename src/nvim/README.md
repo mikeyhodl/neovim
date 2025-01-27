@@ -1,8 +1,7 @@
 Nvim core
 =========
 
-Module-specific details are documented at the top of each module (`terminal.c`,
-`screen.c`, …).
+Module-specific details are documented at the top of each module (`terminal.c`, `undo.c`, …).
 
 See `:help dev` for guidelines.
 
@@ -18,22 +17,28 @@ The source files use extensions to hint about their purpose.
 - `*.h.generated.h` - exported functions’ declarations.
 - `*.c.generated.h` - static functions’ declarations.
 
+Common structures
+-----------------
+
+- StringBuilder
+- kvec or garray.c for dynamic lists / vectors (use StringBuilder for strings)
+
 Logs
 ----
 
 Low-level log messages sink to `$NVIM_LOG_FILE`.
 
-UI events are logged at DEBUG level (`LOGLVL_DBG`).
+UI events are logged at DEBUG level.
 
     rm -rf build/
-    make CMAKE_EXTRA_FLAGS="-DMIN_LOG_LEVEL=0"
+    make CMAKE_EXTRA_FLAGS="-DLOG_DEBUG"
 
 Use `LOG_CALLSTACK()` (Linux only) to log the current stacktrace. To log to an
 alternate file (e.g. stderr) use `LOG_CALLSTACK_TO_FILE(FILE*)`. Requires
 `-no-pie` ([ref](https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=860394#15)):
 
     rm -rf build/
-    make CMAKE_EXTRA_FLAGS="-DMIN_LOG_LEVEL=0 -DCMAKE_C_FLAGS=-no-pie"
+    make CMAKE_EXTRA_FLAGS="-DLOG_DEBUG -DCMAKE_C_FLAGS=-no-pie"
 
 Many log messages have a shared prefix, such as "UI" or "RPC". Use the shell to
 filter the log, e.g. at DEBUG level you might want to exclude UI messages:
@@ -54,9 +59,9 @@ Requires clang 3.4 or later, and `llvm-symbolizer` must be in `$PATH`:
 
 Build Nvim with sanitizer instrumentation (choose one):
 
-    CC=clang make CMAKE_EXTRA_FLAGS="-DCLANG_ASAN_UBSAN=ON"
-    CC=clang make CMAKE_EXTRA_FLAGS="-DCLANG_MSAN=ON"
-    CC=clang make CMAKE_EXTRA_FLAGS="-DCLANG_TSAN=ON"
+    CC=clang make CMAKE_EXTRA_FLAGS="-DENABLE_ASAN_UBSAN=ON"
+    CC=clang make CMAKE_EXTRA_FLAGS="-DENABLE_MSAN=ON"
+    CC=clang make CMAKE_EXTRA_FLAGS="-DENABLE_TSAN=ON"
 
 Create a directory to store logs:
 
@@ -64,16 +69,22 @@ Create a directory to store logs:
 
 Configure the sanitizer(s) via these environment variables:
 
-    # Change to detect_leaks=1 to detect memory leaks (slower).
+    # Change to detect_leaks=1 to detect memory leaks (slower, noisier).
     export ASAN_OPTIONS="detect_leaks=0:log_path=$HOME/logs/asan"
     # Show backtraces in the logs.
-    export UBSAN_OPTIONS=print_stacktrace=1
     export MSAN_OPTIONS="log_path=${HOME}/logs/msan"
     export TSAN_OPTIONS="log_path=${HOME}/logs/tsan"
 
 Logs will be written to `${HOME}/logs/*san.PID` then.
 
 For more information: https://github.com/google/sanitizers/wiki/SanitizerCommonFlags
+
+Reproducible build
+------------------
+
+To make a reproducible build of Nvim, set cmake variable `LUA_GEN_PRG` to
+a LuaJIT binary built with `LUAJIT_SECURITY_PRN=0`. See commit
+cb757f2663e6950e655c6306d713338dfa66b18d.
 
 Debug: Performance
 ------------------
@@ -185,6 +196,31 @@ possible to see exactly what terminfo values Nvim is using on any system.
 
     nvim -V3log
 
+### TUI Debugging with gdb/lldb
+
+Launching the nvim TUI involves two processes, one for main editor state and one
+for rendering the TUI. Both of these processes use the nvim binary, so somewhat
+confusingly setting a breakpoint in either will generally succeed but may not be
+hit depending on which process the breakpoints were set in.
+
+To debug the main process, you can debug the nvim binary with the `--headless`
+flag which does not launch the TUI and will allow you to set breakpoints in code
+not related to TUI rendering like so:
+
+    lldb -- ./build/bin/nvim --headless --listen ~/.cache/nvim/debug-server.pipe
+
+While in lldb, enter `run`. You can then attach to the headless process in a
+new terminal window to interact with the editor like so:
+
+    ./build/bin/nvim --remote-ui --server ~/.cache/nvim/debug-server.pipe
+
+Conversely for debugging TUI rendering, you can start a headless process and
+debug the remote-ui process multiple times without losing editor state.
+
+For details on using nvim-dap and automatically debugging the child (main)
+process, see
+[here](https://zignar.net/2023/02/17/debugging-neovim-with-neovim-and-nvim-dap/)
+
 ### TUI trace
 
 The ancient `script` command is still the "state of the art" for tracing
@@ -218,6 +254,12 @@ region is repainted internally. To also highlight excess internal redraws, use
 - `man terminfo`
 - http://bazaar.launchpad.net/~libvterm/libvterm/trunk/view/head:/doc/seqs.txt
 - http://invisible-island.net/xterm/ctlseqs/ctlseqs.html
+
+Data structures
+---------------
+
+Buffer text is stored as a tree of line segments, defined in [memline.c](https://github.com/neovim/neovim/blob/v0.9.5/src/nvim/memline.c#L8-L35).
+The central idea is found in [ml_find_line](https://github.com/neovim/neovim/blob/v0.9.5/src/nvim/memline.c#L2800).
 
 Nvim lifecycle
 --------------
@@ -355,6 +397,68 @@ modes managed by the `state_enter` loop:
 - command-line mode: `command_line_{enter,check,execute}()`(`ex_getln.c`)
 - insert mode: `insert_{enter,check,execute}()`(`edit.c`)
 - terminal mode: `terminal_{enter,execute}()`(`terminal.c`)
+
+## Important variables
+
+The current mode is stored in `State`.  The values it can have are `MODE_NORMAL`,
+`MODE_INSERT`, `MODE_CMDLINE`, and a few others.
+
+The current window is `curwin`.  The current buffer is `curbuf`.  These point
+to structures with the cursor position in the window, option values, the file
+name, etc.
+
+All the global variables are declared in `globals.h`.
+
+### The main loop
+
+The main loop is implemented in state_enter. The basic idea is that Vim waits
+for the user to type a character and processes it until another character is
+needed.  Thus there are several places where Vim waits for a character to be
+typed.  The `vgetc()` function is used for this.  It also handles mapping.
+
+Updating the screen is mostly postponed until a command or a sequence of
+commands has finished.  The work is done by `update_screen()`, which calls
+`win_update()` for every window, which calls `win_line()` for every line.
+See the start of [drawscreen.c](drawscreen.c) for more explanations.
+
+### Command-line mode
+
+When typing a `:`, `normal_cmd()` will call `getcmdline()` to obtain a line with
+an Ex command.  `getcmdline()` calls a loop that will handle each typed
+character.  It returns when hitting `<CR>` or `<Esc>` or some other character that
+ends the command line mode.
+
+### Ex commands
+
+Ex commands are handled by the function `do_cmdline()`.  It does the generic
+parsing of the `:` command line and calls `do_one_cmd()` for each separate
+command.  It also takes care of while loops.
+
+`do_one_cmd()` parses the range and generic arguments and puts them in the
+exarg_t and passes it to the function that handles the command.
+
+The `:` commands are listed in [ex_cmds.lua](ex_cmds.lua).
+
+### Normal mode commands
+
+The Normal mode commands are handled by the `normal_cmd()` function.  It also
+handles the optional count and an extra character for some commands.  These
+are passed in a `cmdarg_T` to the function that handles the command.
+
+There is a table `nv_cmds` in [normal.c](normal.c) which
+lists the first character of every
+command.  The second entry of each item is the name of the function that
+handles the command.
+
+### Insert mode commands
+
+When doing an `i` or `a` command, `normal_cmd()` will call the `edit()` function.
+It contains a loop that waits for the next character and handles it.  It
+returns when leaving Insert mode.
+
+### Options
+
+There is a list with all option names in [options.lua](options.lua).
 
 Async event support
 -------------------

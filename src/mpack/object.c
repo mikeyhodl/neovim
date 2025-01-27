@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <string.h>
 
 #include "object.h"
@@ -128,8 +125,11 @@ MPACK_API int mpack_unparse(mpack_parser_t *parser, char **buf, size_t *buflen,
   return status;
 }
 
-MPACK_API void mpack_parser_copy(mpack_parser_t *dst, mpack_parser_t *src)
+MPACK_API void mpack_parser_copy(mpack_parser_t *d, mpack_parser_t *s)
 {
+  // workaround UBSAN being NOT happy with a flexible array member with arr[N>1] initial size
+  mpack_one_parser_t *dst = (mpack_one_parser_t *)d;
+  mpack_one_parser_t *src = (mpack_one_parser_t *)s;
   mpack_uint32_t i;
   mpack_uint32_t dst_capacity = dst->capacity; 
   assert(src->capacity <= dst_capacity);
@@ -148,8 +148,9 @@ static int mpack_parser_full(mpack_parser_t *parser)
   return parser->size == parser->capacity;
 }
 
-static mpack_node_t *mpack_parser_push(mpack_parser_t *parser)
+static mpack_node_t *mpack_parser_push(mpack_parser_t *p)
 {
+  mpack_one_parser_t *parser = (mpack_one_parser_t *)p;
   mpack_node_t *top;
   assert(parser->size < parser->capacity);
   top = parser->items + parser->size + 1;
@@ -162,8 +163,9 @@ static mpack_node_t *mpack_parser_push(mpack_parser_t *parser)
   return top;
 }
 
-static mpack_node_t *mpack_parser_pop(mpack_parser_t *parser)
+static mpack_node_t *mpack_parser_pop(mpack_parser_t *p)
 {
+  mpack_one_parser_t *parser = (mpack_one_parser_t *)p;
   mpack_node_t *top, *parent;
   assert(parser->size);
   top = parser->items + parser->size;

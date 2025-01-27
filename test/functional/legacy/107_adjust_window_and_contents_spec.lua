@@ -1,19 +1,18 @@
 -- Tests for adjusting window and contents
 
-local helpers = require('test.functional.helpers')(after_each)
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
 
-local poke_eventloop = helpers.poke_eventloop
-local clear = helpers.clear
-local insert = helpers.insert
-local command = helpers.command
+local poke_eventloop = n.poke_eventloop
+local clear = n.clear
+local insert = n.insert
+local command = n.command
 
 describe('107', function()
   setup(clear)
 
   it('is working', function()
     local screen = Screen.new()
-    screen:attach()
 
     insert('start:')
     poke_eventloop()
@@ -50,15 +49,7 @@ describe('107', function()
       [1, '1  ']                                           |
       [50, '50 ']                                          |
       ^[59, '59 ']                                          |
-      ~                                                    |
-      ~                                                    |
-      ~                                                    |
-      ~                                                    |
-      ~                                                    |
-      ~                                                    |
-      ~                                                    |
-      ~                                                    |
-      ~                                                    |
+      {1:~                                                    }|*9
       3 more lines                                         |
     ]])
   end)

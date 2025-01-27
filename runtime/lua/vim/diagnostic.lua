@@ -1,34 +1,356 @@
-local if_nil = vim.F.if_nil
+local api, if_nil = vim.api, vim.F.if_nil
 
 local M = {}
 
+--- @param title string
+--- @return integer?
+local function get_qf_id_for_title(title)
+  local lastqflist = vim.fn.getqflist({ nr = '$' })
+  for i = 1, lastqflist.nr do
+    local qflist = vim.fn.getqflist({ nr = i, id = 0, title = 0 })
+    if qflist.title == title then
+      return qflist.id
+    end
+  end
+
+  return nil
+end
+
+--- [diagnostic-structure]()
+---
+--- Diagnostics use the same indexing as the rest of the Nvim API (i.e. 0-based
+--- rows and columns). |api-indexing|
+--- @class vim.Diagnostic
+---
+--- Buffer number
+--- @field bufnr? integer
+---
+--- The starting line of the diagnostic (0-indexed)
+--- @field lnum integer
+---
+--- The final line of the diagnostic (0-indexed)
+--- @field end_lnum? integer
+---
+--- The starting column of the diagnostic (0-indexed)
+--- @field col integer
+---
+--- The final column of the diagnostic (0-indexed)
+--- @field end_col? integer
+---
+--- The severity of the diagnostic |vim.diagnostic.severity|
+--- @field severity? vim.diagnostic.Severity
+---
+--- The diagnostic text
+--- @field message string
+---
+--- The source of the diagnostic
+--- @field source? string
+---
+--- The diagnostic code
+--- @field code? string|integer
+---
+--- @field _tags? { deprecated: boolean, unnecessary: boolean}
+---
+--- Arbitrary data plugins or users can add
+--- @field user_data? any arbitrary data plugins can add
+---
+--- @field namespace? integer
+
+--- Many of the configuration options below accept one of the following:
+--- - `false`: Disable this feature
+--- - `true`: Enable this feature, use default settings.
+--- - `table`: Enable this feature with overrides. Use an empty table to use default values.
+--- - `function`: Function with signature (namespace, bufnr) that returns any of the above.
+--- @class vim.diagnostic.Opts
+---
+--- Use underline for diagnostics.
+--- (default: `true`)
+--- @field underline? boolean|vim.diagnostic.Opts.Underline|fun(namespace: integer, bufnr:integer): vim.diagnostic.Opts.Underline
+---
+--- Use virtual text for diagnostics. If multiple diagnostics are set for a
+--- namespace, one prefix per diagnostic + the last diagnostic message are
+--- shown.
+--- (default: `false`)
+--- @field virtual_text? boolean|vim.diagnostic.Opts.VirtualText|fun(namespace: integer, bufnr:integer): vim.diagnostic.Opts.VirtualText
+---
+--- Use virtual lines for diagnostics.
+--- (default: `false`)
+--- @field virtual_lines? boolean|vim.diagnostic.Opts.VirtualLines|fun(namespace: integer, bufnr:integer): vim.diagnostic.Opts.VirtualLines
+---
+--- Use signs for diagnostics |diagnostic-signs|.
+--- (default: `true`)
+--- @field signs? boolean|vim.diagnostic.Opts.Signs|fun(namespace: integer, bufnr:integer): vim.diagnostic.Opts.Signs
+---
+--- Options for floating windows. See |vim.diagnostic.Opts.Float|.
+--- @field float? boolean|vim.diagnostic.Opts.Float|fun(namespace: integer, bufnr:integer): vim.diagnostic.Opts.Float
+---
+--- Update diagnostics in Insert mode
+--- (if `false`, diagnostics are updated on |InsertLeave|)
+--- (default: `false`)
+--- @field update_in_insert? boolean
+---
+--- Sort diagnostics by severity. This affects the order in which signs,
+--- virtual text, and highlights are displayed. When true, higher severities are
+--- displayed before lower severities (e.g. ERROR is displayed before WARN).
+--- Options:
+---   - {reverse}? (boolean) Reverse sort order
+--- (default: `false`)
+--- @field severity_sort? boolean|{reverse?:boolean}
+---
+--- Default values for |vim.diagnostic.jump()|. See |vim.diagnostic.Opts.Jump|.
+--- @field jump? vim.diagnostic.Opts.Jump
+
+--- @class (private) vim.diagnostic.OptsResolved
+--- @field float vim.diagnostic.Opts.Float
+--- @field update_in_insert boolean
+--- @field underline vim.diagnostic.Opts.Underline
+--- @field virtual_text vim.diagnostic.Opts.VirtualText
+--- @field virtual_lines vim.diagnostic.Opts.VirtualLines
+--- @field signs vim.diagnostic.Opts.Signs
+--- @field severity_sort {reverse?:boolean}
+
+--- @class vim.diagnostic.Opts.Float
+---
+--- Buffer number to show diagnostics from.
+--- (default: current buffer)
+--- @field bufnr? integer
+---
+--- Limit diagnostics to the given namespace
+--- @field namespace? integer
+---
+--- Show diagnostics from the whole buffer (`buffer"`, the current cursor line
+--- (`line`), or the current cursor position (`cursor`). Shorthand versions
+--- are also accepted (`c` for `cursor`, `l` for `line`, `b` for `buffer`).
+--- (default: `line`)
+--- @field scope? 'line'|'buffer'|'cursor'|'c'|'l'|'b'
+---
+--- If {scope} is "line" or "cursor", use this position rather than the cursor
+--- position. If a number, interpreted as a line number; otherwise, a
+--- (row, col) tuple.
+--- @field pos? integer|[integer,integer]
+---
+--- Sort diagnostics by severity.
+--- Overrides the setting from |vim.diagnostic.config()|.
+--- (default: `false`)
+--- @field severity_sort? boolean|{reverse?:boolean}
+---
+--- See |diagnostic-severity|.
+--- Overrides the setting from |vim.diagnostic.config()|.
+--- @field severity? vim.diagnostic.SeverityFilter
+---
+--- String to use as the header for the floating window. If a table, it is
+--- interpreted as a `[text, hl_group]` tuple.
+--- Overrides the setting from |vim.diagnostic.config()|.
+--- @field header? string|[string,any]
+---
+--- Include the diagnostic source in the message.
+--- Use "if_many" to only show sources if there is more than one source of
+--- diagnostics in the buffer. Otherwise, any truthy value means to always show
+--- the diagnostic source.
+--- Overrides the setting from |vim.diagnostic.config()|.
+--- @field source? boolean|'if_many'
+---
+--- A function that takes a diagnostic as input and returns a string.
+--- The return value is the text used to display the diagnostic.
+--- Overrides the setting from |vim.diagnostic.config()|.
+--- @field format? fun(diagnostic:vim.Diagnostic): string
+---
+--- Prefix each diagnostic in the floating window:
+--- - If a `function`, {i} is the index of the diagnostic being evaluated and
+---   {total} is the total number of diagnostics displayed in the window. The
+---   function should return a `string` which is prepended to each diagnostic
+---   in the window as well as an (optional) highlight group which will be
+---   used to highlight the prefix.
+--- - If a `table`, it is interpreted as a `[text, hl_group]` tuple as
+---   in |nvim_echo()|
+--- - If a `string`, it is prepended to each diagnostic in the window with no
+---   highlight.
+--- Overrides the setting from |vim.diagnostic.config()|.
+--- @field prefix? string|table|(fun(diagnostic:vim.Diagnostic,i:integer,total:integer): string, string)
+---
+--- Same as {prefix}, but appends the text to the diagnostic instead of
+--- prepending it.
+--- Overrides the setting from |vim.diagnostic.config()|.
+--- @field suffix? string|table|(fun(diagnostic:vim.Diagnostic,i:integer,total:integer): string, string)
+---
+--- @field focus_id? string
+---
+--- @field border? string see |nvim_open_win()|.
+
+--- @class vim.diagnostic.Opts.Underline
+---
+--- Only underline diagnostics matching the given
+--- severity |diagnostic-severity|.
+--- @field severity? vim.diagnostic.SeverityFilter
+
+--- @class vim.diagnostic.Opts.VirtualText
+---
+--- Only show virtual text for diagnostics matching the given
+--- severity |diagnostic-severity|
+--- @field severity? vim.diagnostic.SeverityFilter
+---
+--- Include the diagnostic source in virtual text. Use `'if_many'` to only
+--- show sources if there is more than one diagnostic source in the buffer.
+--- Otherwise, any truthy value means to always show the diagnostic source.
+--- @field source? boolean|"if_many"
+---
+--- Amount of empty spaces inserted at the beginning of the virtual text.
+--- @field spacing? integer
+---
+--- Prepend diagnostic message with prefix. If a `function`, {i} is the index
+--- of the diagnostic being evaluated, and {total} is the total number of
+--- diagnostics for the line. This can be used to render diagnostic symbols
+--- or error codes.
+--- @field prefix? string|(fun(diagnostic:vim.Diagnostic,i:integer,total:integer): string)
+---
+--- Append diagnostic message with suffix.
+--- This can be used to render an LSP diagnostic error code.
+--- @field suffix? string|(fun(diagnostic:vim.Diagnostic): string)
+---
+--- The return value is the text used to display the diagnostic. Example:
+--- ```lua
+--- function(diagnostic)
+---   if diagnostic.severity == vim.diagnostic.severity.ERROR then
+---     return string.format("E: %s", diagnostic.message)
+---   end
+---   return diagnostic.message
+--- end
+--- ```
+--- @field format? fun(diagnostic:vim.Diagnostic): string
+---
+--- See |nvim_buf_set_extmark()|.
+--- @field hl_mode? 'replace'|'combine'|'blend'
+---
+--- See |nvim_buf_set_extmark()|.
+--- @field virt_text? [string,any][]
+---
+--- See |nvim_buf_set_extmark()|.
+--- @field virt_text_pos? 'eol'|'eol_right_align'|'inline'|'overlay'|'right_align'
+---
+--- See |nvim_buf_set_extmark()|.
+--- @field virt_text_win_col? integer
+---
+--- See |nvim_buf_set_extmark()|.
+--- @field virt_text_hide? boolean
+
+--- @class vim.diagnostic.Opts.VirtualLines
+---
+--- Only show diagnostics for the current line.
+--- (default: `false`)
+--- @field current_line? boolean
+---
+--- A function that takes a diagnostic as input and returns a string.
+--- The return value is the text used to display the diagnostic.
+--- @field format? fun(diagnostic:vim.Diagnostic): string
+
+--- @class vim.diagnostic.Opts.Signs
+---
+--- Only show virtual text for diagnostics matching the given
+--- severity |diagnostic-severity|
+--- @field severity? vim.diagnostic.SeverityFilter
+---
+--- Base priority to use for signs. When {severity_sort} is used, the priority
+--- of a sign is adjusted based on its severity.
+--- Otherwise, all signs use the same priority.
+--- (default: `10`)
+--- @field priority? integer
+---
+--- A table mapping |diagnostic-severity| to the sign text to display in the
+--- sign column. The default is to use `"E"`, `"W"`, `"I"`, and `"H"` for errors,
+--- warnings, information, and hints, respectively. Example:
+--- ```lua
+--- vim.diagnostic.config({
+---   signs = { text = { [vim.diagnostic.severity.ERROR] = 'E', ... } }
+--- })
+--- ```
+--- @field text? table<vim.diagnostic.Severity,string>
+---
+--- A table mapping |diagnostic-severity| to the highlight group used for the
+--- line number where the sign is placed.
+--- @field numhl? table<vim.diagnostic.Severity,string>
+---
+--- A table mapping |diagnostic-severity| to the highlight group used for the
+--- whole line the sign is placed in.
+--- @field linehl? table<vim.diagnostic.Severity,string>
+
+--- @class vim.diagnostic.Opts.Jump
+---
+--- Default value of the {float} parameter of |vim.diagnostic.jump()|.
+--- (default: false)
+--- @field float? boolean|vim.diagnostic.Opts.Float
+---
+--- Default value of the {wrap} parameter of |vim.diagnostic.jump()|.
+--- (default: true)
+--- @field wrap? boolean
+---
+--- Default value of the {severity} parameter of |vim.diagnostic.jump()|.
+--- @field severity? vim.diagnostic.SeverityFilter
+---
+--- Default value of the {_highest} parameter of |vim.diagnostic.jump()|.
+--- @field package _highest? boolean
+
+-- TODO: inherit from `vim.diagnostic.Opts`, implement its fields.
+--- Optional filters |kwargs|, or `nil` for all.
+--- @class vim.diagnostic.Filter
+--- @inlinedoc
+---
+--- Diagnostic namespace, or `nil` for all.
+--- @field ns_id? integer
+---
+--- Buffer number, or 0 for current buffer, or `nil` for all buffers.
+--- @field bufnr? integer
+
+--- @nodoc
+--- @enum vim.diagnostic.Severity
 M.severity = {
   ERROR = 1,
   WARN = 2,
   INFO = 3,
   HINT = 4,
+  [1] = 'ERROR',
+  [2] = 'WARN',
+  [3] = 'INFO',
+  [4] = 'HINT',
+  --- Mappings from qflist/loclist error types to severities
+  E = 1,
+  W = 2,
+  I = 3,
+  N = 4,
 }
 
-vim.tbl_add_reverse_lookup(M.severity)
+--- @alias vim.diagnostic.SeverityInt 1|2|3|4
 
--- Mappings from qflist/loclist error types to severities
-M.severity.E = M.severity.ERROR
-M.severity.W = M.severity.WARN
-M.severity.I = M.severity.INFO
-M.severity.N = M.severity.HINT
+--- See |diagnostic-severity| and |vim.diagnostic.get()|
+--- @alias vim.diagnostic.SeverityFilter vim.diagnostic.Severity|vim.diagnostic.Severity[]|{min:vim.diagnostic.Severity,max:vim.diagnostic.Severity}
 
+--- @type vim.diagnostic.Opts
 local global_diagnostic_options = {
   signs = true,
   underline = true,
-  virtual_text = true,
+  virtual_text = false,
+  virtual_lines = false,
   float = true,
   update_in_insert = false,
   severity_sort = false,
+  jump = {
+    -- Do not show floating window
+    float = false,
+
+    -- Wrap around buffer
+    wrap = true,
+  },
 }
 
+--- @class (private) vim.diagnostic.Handler
+--- @field show? fun(namespace: integer, bufnr: integer, diagnostics: vim.Diagnostic[], opts?: vim.diagnostic.OptsResolved)
+--- @field hide? fun(namespace:integer, bufnr:integer)
+--- @field _augroup? integer
+
+--- @nodoc
+--- @type table<string,vim.diagnostic.Handler>
 M.handlers = setmetatable({}, {
   __newindex = function(t, name, handler)
-    vim.validate({ handler = { handler, 't' } })
+    vim.validate('handler', handler, 'table')
     rawset(t, name, handler)
     if global_diagnostic_options[name] == nil then
       global_diagnostic_options[name] = true
@@ -38,6 +360,9 @@ M.handlers = setmetatable({}, {
 
 -- Metatable that automatically creates an empty table when assigning to a missing key
 local bufnr_and_namespace_cacher_mt = {
+  --- @param t table<integer,table>
+  --- @param bufnr integer
+  --- @return table
   __index = function(t, bufnr)
     assert(bufnr > 0, 'Invalid buffer number')
     t[bufnr] = {}
@@ -45,13 +370,16 @@ local bufnr_and_namespace_cacher_mt = {
   end,
 }
 
-local diagnostic_cache
+-- bufnr -> ns -> Diagnostic[]
+local diagnostic_cache = {} --- @type table<integer,table<integer,vim.Diagnostic[]>>
 do
-  local group = vim.api.nvim_create_augroup('DiagnosticBufWipeout', {})
-  diagnostic_cache = setmetatable({}, {
+  local group = api.nvim_create_augroup('nvim.diagnostic.buf_wipeout', {})
+  setmetatable(diagnostic_cache, {
+    --- @param t table<integer,vim.Diagnostic[]>
+    --- @param bufnr integer
     __index = function(t, bufnr)
       assert(bufnr > 0, 'Invalid buffer number')
-      vim.api.nvim_create_autocmd('BufWipeout', {
+      api.nvim_create_autocmd('BufWipeout', {
         group = group,
         buffer = bufnr,
         callback = function()
@@ -64,53 +392,96 @@ do
   })
 end
 
+--- @class (private) vim.diagnostic._extmark
+--- @field [1] integer id
+--- @field [2] integer start
+--- @field [3] integer end
+--- @field [4] table details
+
+--- @type table<integer,table<integer,vim.diagnostic._extmark[]>>
 local diagnostic_cache_extmarks = setmetatable({}, bufnr_and_namespace_cacher_mt)
+
+--- @type table<integer,true>
 local diagnostic_attached_buffers = {}
+
+--- @type table<integer,true|table<integer,true>>
 local diagnostic_disabled = {}
+
+--- @type table<integer,table<integer,table>>
 local bufs_waiting_to_update = setmetatable({}, bufnr_and_namespace_cacher_mt)
 
+--- @class vim.diagnostic.NS
+--- @field name string
+--- @field opts vim.diagnostic.Opts
+--- @field user_data table
+--- @field disabled? boolean
+
+--- @type table<integer,vim.diagnostic.NS>
 local all_namespaces = {}
 
----@private
+---@param severity string|vim.diagnostic.Severity
+---@return vim.diagnostic.Severity?
 local function to_severity(severity)
   if type(severity) == 'string' then
-    return assert(
-      M.severity[string.upper(severity)],
-      string.format('Invalid severity: %s', severity)
-    )
+    assert(M.severity[string.upper(severity)], string.format('Invalid severity: %s', severity))
+    return M.severity[string.upper(severity)]
   end
   return severity
 end
 
----@private
+--- @param severity vim.diagnostic.SeverityFilter
+--- @return fun(vim.Diagnostic):boolean
+local function severity_predicate(severity)
+  if type(severity) ~= 'table' then
+    severity = assert(to_severity(severity))
+    ---@param d vim.Diagnostic
+    return function(d)
+      return d.severity == severity
+    end
+  end
+  if severity.min or severity.max then
+    --- @cast severity {min:vim.diagnostic.Severity,max:vim.diagnostic.Severity}
+    local min_severity = to_severity(severity.min) or M.severity.HINT
+    local max_severity = to_severity(severity.max) or M.severity.ERROR
+
+    --- @param d vim.Diagnostic
+    return function(d)
+      return d.severity <= min_severity and d.severity >= max_severity
+    end
+  end
+
+  --- @cast severity vim.diagnostic.Severity[]
+  local severities = {} --- @type table<vim.diagnostic.Severity,true>
+  for _, s in ipairs(severity) do
+    severities[assert(to_severity(s))] = true
+  end
+
+  --- @param d vim.Diagnostic
+  return function(d)
+    return severities[d.severity]
+  end
+end
+
+--- @param severity vim.diagnostic.SeverityFilter
+--- @param diagnostics vim.Diagnostic[]
+--- @return vim.Diagnostic[]
 local function filter_by_severity(severity, diagnostics)
   if not severity then
     return diagnostics
   end
-
-  if type(severity) ~= 'table' then
-    severity = to_severity(severity)
-    return vim.tbl_filter(function(t)
-      return t.severity == severity
-    end, diagnostics)
-  end
-
-  local min_severity = to_severity(severity.min) or M.severity.HINT
-  local max_severity = to_severity(severity.max) or M.severity.ERROR
-
-  return vim.tbl_filter(function(t)
-    return t.severity <= min_severity and t.severity >= max_severity
-  end, diagnostics)
+  return vim.tbl_filter(severity_predicate(severity), diagnostics)
 end
 
----@private
+--- @param bufnr integer
+--- @return integer
 local function count_sources(bufnr)
-  local seen = {}
+  local seen = {} --- @type table<string,true>
   local count = 0
   for _, namespace_diagnostics in pairs(diagnostic_cache[bufnr]) do
     for _, diagnostic in ipairs(namespace_diagnostics) do
-      if diagnostic.source and not seen[diagnostic.source] then
-        seen[diagnostic.source] = true
+      local source = diagnostic.source
+      if source and not seen[source] then
+        seen[source] = true
         count = count + 1
       end
     end
@@ -118,55 +489,63 @@ local function count_sources(bufnr)
   return count
 end
 
----@private
+--- @param diagnostics vim.Diagnostic[]
+--- @return vim.Diagnostic[]
 local function prefix_source(diagnostics)
+  --- @param d vim.Diagnostic
   return vim.tbl_map(function(d)
     if not d.source then
       return d
     end
 
-    local t = vim.deepcopy(d)
+    local t = vim.deepcopy(d, true)
     t.message = string.format('%s: %s', d.source, d.message)
     return t
   end, diagnostics)
 end
 
----@private
+--- @param diagnostics vim.Diagnostic[]
+--- @return vim.Diagnostic[]
 local function reformat_diagnostics(format, diagnostics)
-  vim.validate({
-    format = { format, 'f' },
-    diagnostics = { diagnostics, 't' },
-  })
+  vim.validate('format', format, 'function')
+  vim.validate('diagnostics', diagnostics, vim.islist, 'a list of diagnostics')
 
-  local formatted = vim.deepcopy(diagnostics)
+  local formatted = vim.deepcopy(diagnostics, true)
   for _, diagnostic in ipairs(formatted) do
     diagnostic.message = format(diagnostic)
   end
   return formatted
 end
 
----@private
+--- @param option string
+--- @param namespace integer?
+--- @return table
 local function enabled_value(option, namespace)
   local ns = namespace and M.get_namespace(namespace) or {}
   if ns.opts and type(ns.opts[option]) == 'table' then
     return ns.opts[option]
   end
 
-  if type(global_diagnostic_options[option]) == 'table' then
-    return global_diagnostic_options[option]
+  local global_opt = global_diagnostic_options[option]
+  if type(global_opt) == 'table' then
+    return global_opt
   end
 
   return {}
 end
 
----@private
+--- @param option string
+--- @param value any?
+--- @param namespace integer?
+--- @param bufnr integer
+--- @return any
 local function resolve_optional_value(option, value, namespace, bufnr)
   if not value then
     return false
   elseif value == true then
     return enabled_value(option, namespace)
   elseif type(value) == 'function' then
-    local val = value(namespace, bufnr)
+    local val = value(namespace, bufnr) --- @type any
     if val == true then
       return enabled_value(option, namespace)
     else
@@ -174,16 +553,18 @@ local function resolve_optional_value(option, value, namespace, bufnr)
     end
   elseif type(value) == 'table' then
     return value
-  else
-    error('Unexpected option type: ' .. vim.inspect(value))
   end
+  error('Unexpected option type: ' .. vim.inspect(value))
 end
 
----@private
+--- @param opts vim.diagnostic.Opts?
+--- @param namespace integer?
+--- @param bufnr integer
+--- @return vim.diagnostic.OptsResolved
 local function get_resolved_options(opts, namespace, bufnr)
   local ns = namespace and M.get_namespace(namespace) or {}
   -- Do not use tbl_deep_extend so that an empty table can be used to reset to default values
-  local resolved = vim.tbl_extend('keep', opts or {}, ns.opts or {}, global_diagnostic_options)
+  local resolved = vim.tbl_extend('keep', opts or {}, ns.opts or {}, global_diagnostic_options) --- @type table<string,any>
   for k in pairs(global_diagnostic_options) do
     if resolved[k] ~= nil then
       resolved[k] = resolve_optional_value(k, resolved[k], namespace, bufnr)
@@ -200,10 +581,11 @@ local diagnostic_severities = {
   [M.severity.HINT] = { ctermfg = 7, guifg = 'LightGrey' },
 }
 
--- Make a map from DiagnosticSeverity -> Highlight Name
----@private
+--- Make a map from vim.diagnostic.Severity -> Highlight Name
+--- @param base_name string
+--- @return table<vim.diagnostic.SeverityInt,string>
 local function make_highlight_map(base_name)
-  local result = {}
+  local result = {} --- @type table<vim.diagnostic.SeverityInt,string>
   for k in pairs(diagnostic_severities) do
     local name = M.severity[k]
     name = name:sub(1, 1) .. name:sub(2):lower()
@@ -213,63 +595,22 @@ local function make_highlight_map(base_name)
   return result
 end
 
+-- TODO(lewis6991): these highlight maps can only be indexed with an integer, however there usage
+-- implies they can be indexed with any vim.diagnostic.Severity
 local virtual_text_highlight_map = make_highlight_map('VirtualText')
+local virtual_lines_highlight_map = make_highlight_map('VirtualLines')
 local underline_highlight_map = make_highlight_map('Underline')
 local floating_highlight_map = make_highlight_map('Floating')
 local sign_highlight_map = make_highlight_map('Sign')
 
----@private
-local define_default_signs = (function()
-  local signs_defined = false
-  return function()
-    if signs_defined then
-      return
-    end
-
-    for severity, sign_hl_name in pairs(sign_highlight_map) do
-      if vim.tbl_isempty(vim.fn.sign_getdefined(sign_hl_name)) then
-        local severity_name = M.severity[severity]
-        vim.fn.sign_define(sign_hl_name, {
-          text = (severity_name or 'U'):sub(1, 1),
-          texthl = sign_hl_name,
-          linehl = '',
-          numhl = '',
-        })
-      end
-    end
-
-    signs_defined = true
-  end
-end)()
-
----@private
-local function get_bufnr(bufnr)
-  if not bufnr or bufnr == 0 then
-    return vim.api.nvim_get_current_buf()
-  end
-  return bufnr
-end
-
----@private
-local function is_disabled(namespace, bufnr)
-  local ns = M.get_namespace(namespace)
-  if ns.disabled then
-    return true
-  end
-
-  if type(diagnostic_disabled[bufnr]) == 'table' then
-    return diagnostic_disabled[bufnr][namespace]
-  end
-  return diagnostic_disabled[bufnr]
-end
-
----@private
+--- @param diagnostics vim.Diagnostic[]
+--- @return table<integer,vim.Diagnostic[]>
 local function diagnostic_lines(diagnostics)
   if not diagnostics then
     return {}
   end
 
-  local diagnostics_by_line = {}
+  local diagnostics_by_line = {} --- @type table<integer,vim.Diagnostic[]>
   for _, diagnostic in ipairs(diagnostics) do
     local line_diagnostics = diagnostics_by_line[diagnostic.lnum]
     if not line_diagnostics then
@@ -281,7 +622,9 @@ local function diagnostic_lines(diagnostics)
   return diagnostics_by_line
 end
 
----@private
+--- @param namespace integer
+--- @param bufnr integer
+--- @param diagnostics vim.Diagnostic[]
 local function set_diagnostic_cache(namespace, bufnr, diagnostics)
   for _, diagnostic in ipairs(diagnostics) do
     assert(diagnostic.lnum, 'Diagnostic line number is required')
@@ -296,11 +639,12 @@ local function set_diagnostic_cache(namespace, bufnr, diagnostics)
   diagnostic_cache[bufnr][namespace] = diagnostics
 end
 
----@private
+--- @param bufnr integer
+--- @param last integer
 local function restore_extmarks(bufnr, last)
   for ns, extmarks in pairs(diagnostic_cache_extmarks[bufnr]) do
-    local extmarks_current = vim.api.nvim_buf_get_extmarks(bufnr, ns, 0, -1, { details = true })
-    local found = {}
+    local extmarks_current = api.nvim_buf_get_extmarks(bufnr, ns, 0, -1, { details = true })
+    local found = {} --- @type table<integer,true>
     for _, extmark in ipairs(extmarks_current) do
       -- nvim_buf_set_lines will move any extmark to the line after the last
       -- nvim_buf_set_text will move any extmark to the last line
@@ -312,17 +656,18 @@ local function restore_extmarks(bufnr, last)
       if not found[extmark[1]] then
         local opts = extmark[4]
         opts.id = extmark[1]
-        pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, extmark[2], extmark[3], opts)
+        pcall(api.nvim_buf_set_extmark, bufnr, ns, extmark[2], extmark[3], opts)
       end
     end
   end
 end
 
----@private
+--- @param namespace integer
+--- @param bufnr? integer
 local function save_extmarks(namespace, bufnr)
-  bufnr = get_bufnr(bufnr)
+  bufnr = vim._resolve_bufnr(bufnr)
   if not diagnostic_attached_buffers[bufnr] then
-    vim.api.nvim_buf_attach(bufnr, false, {
+    api.nvim_buf_attach(bufnr, false, {
       on_lines = function(_, _, _, _, _, last)
         restore_extmarks(bufnr, last - 1)
       end,
@@ -333,18 +678,41 @@ local function save_extmarks(namespace, bufnr)
     diagnostic_attached_buffers[bufnr] = true
   end
   diagnostic_cache_extmarks[bufnr][namespace] =
-    vim.api.nvim_buf_get_extmarks(bufnr, namespace, 0, -1, { details = true })
+    api.nvim_buf_get_extmarks(bufnr, namespace, 0, -1, { details = true })
 end
 
+--- Create a function that converts a diagnostic severity to an extmark priority.
+--- @param priority integer Base priority
+--- @param opts vim.diagnostic.OptsResolved
+--- @return fun(severity: vim.diagnostic.Severity): integer
+local function severity_to_extmark_priority(priority, opts)
+  if opts.severity_sort then
+    if type(opts.severity_sort) == 'table' and opts.severity_sort.reverse then
+      return function(severity)
+        return priority + (severity - vim.diagnostic.severity.ERROR)
+      end
+    end
+
+    return function(severity)
+      return priority + (vim.diagnostic.severity.HINT - severity)
+    end
+  end
+
+  return function()
+    return priority
+  end
+end
+
+--- @type table<string,true>
 local registered_autocmds = {}
 
----@private
 local function make_augroup_key(namespace, bufnr)
   local ns = M.get_namespace(namespace)
   return string.format('DiagnosticInsertLeave:%s:%s', bufnr, ns.name)
 end
 
----@private
+--- @param namespace integer
+--- @param bufnr integer
 local function execute_scheduled_display(namespace, bufnr)
   local args = bufs_waiting_to_update[bufnr][namespace]
   if not args then
@@ -360,14 +728,16 @@ end
 --- Table of autocmd events to fire the update for displaying new diagnostic information
 local insert_leave_auto_cmds = { 'InsertLeave', 'CursorHoldI' }
 
----@private
+--- @param namespace integer
+--- @param bufnr integer
+--- @param args any[]
 local function schedule_display(namespace, bufnr, args)
   bufs_waiting_to_update[bufnr][namespace] = args
 
   local key = make_augroup_key(namespace, bufnr)
   if not registered_autocmds[key] then
-    local group = vim.api.nvim_create_augroup(key, { clear = true })
-    vim.api.nvim_create_autocmd(insert_leave_auto_cmds, {
+    local group = api.nvim_create_augroup(key, { clear = true })
+    api.nvim_create_autocmd(insert_leave_auto_cmds, {
       group = group,
       buffer = bufnr,
       callback = function()
@@ -379,35 +749,59 @@ local function schedule_display(namespace, bufnr, args)
   end
 end
 
----@private
+--- @param namespace integer
+--- @param bufnr integer
 local function clear_scheduled_display(namespace, bufnr)
   local key = make_augroup_key(namespace, bufnr)
 
   if registered_autocmds[key] then
-    vim.api.nvim_del_augroup_by_name(key)
+    api.nvim_del_augroup_by_name(key)
     registered_autocmds[key] = nil
   end
 end
 
----@private
+--- @param bufnr integer?
+--- @param opts vim.diagnostic.GetOpts?
+--- @param clamp boolean
+--- @return vim.Diagnostic[]
 local function get_diagnostics(bufnr, opts, clamp)
   opts = opts or {}
 
   local namespace = opts.namespace
+
+  if type(namespace) == 'number' then
+    namespace = { namespace }
+  end
+
+  ---@cast namespace integer[]
+
   local diagnostics = {}
 
   -- Memoized results of buf_line_count per bufnr
+  --- @type table<integer,integer>
   local buf_line_count = setmetatable({}, {
+    --- @param t table<integer,integer>
+    --- @param k integer
+    --- @return integer
     __index = function(t, k)
-      t[k] = vim.api.nvim_buf_line_count(k)
+      t[k] = api.nvim_buf_line_count(k)
       return rawget(t, k)
     end,
   })
 
-  ---@private
+  local match_severity = opts.severity and severity_predicate(opts.severity)
+    or function(_)
+      return true
+    end
+
+  ---@param b integer
+  ---@param d vim.Diagnostic
   local function add(b, d)
-    if not opts.lnum or d.lnum == opts.lnum then
-      if clamp and vim.api.nvim_buf_is_loaded(b) then
+    if
+      match_severity(d)
+      and (not opts.lnum or (opts.lnum >= d.lnum and opts.lnum <= (d.end_lnum or d.lnum)))
+    then
+      if clamp and api.nvim_buf_is_loaded(b) then
         local line_count = buf_line_count[b] - 1
         if
           d.lnum > line_count
@@ -417,9 +811,9 @@ local function get_diagnostics(bufnr, opts, clamp)
           or d.col < 0
           or d.end_col < 0
         then
-          d = vim.deepcopy(d)
+          d = vim.deepcopy(d, true)
           d.lnum = math.max(math.min(d.lnum, line_count), 0)
-          d.end_lnum = math.max(math.min(d.end_lnum, line_count), 0)
+          d.end_lnum = math.max(math.min(assert(d.end_lnum), line_count), 0)
           d.col = math.max(d.col, 0)
           d.end_col = math.max(d.end_col, 0)
         end
@@ -428,74 +822,148 @@ local function get_diagnostics(bufnr, opts, clamp)
     end
   end
 
-  if namespace == nil and bufnr == nil then
-    for b, t in pairs(diagnostic_cache) do
-      for _, v in pairs(t) do
-        for _, diagnostic in pairs(v) do
-          add(b, diagnostic)
-        end
-      end
-    end
-  elseif namespace == nil then
-    bufnr = get_bufnr(bufnr)
-    for iter_namespace in pairs(diagnostic_cache[bufnr]) do
-      for _, diagnostic in pairs(diagnostic_cache[bufnr][iter_namespace]) do
-        add(bufnr, diagnostic)
-      end
-    end
-  elseif bufnr == nil then
-    for b, t in pairs(diagnostic_cache) do
-      for _, diagnostic in pairs(t[namespace] or {}) do
-        add(b, diagnostic)
-      end
-    end
-  else
-    bufnr = get_bufnr(bufnr)
-    for _, diagnostic in pairs(diagnostic_cache[bufnr][namespace] or {}) do
-      add(bufnr, diagnostic)
+  --- @param buf integer
+  --- @param diags vim.Diagnostic[]
+  local function add_all_diags(buf, diags)
+    for _, diagnostic in pairs(diags) do
+      add(buf, diagnostic)
     end
   end
 
-  if opts.severity then
-    diagnostics = filter_by_severity(opts.severity, diagnostics)
+  if namespace == nil and bufnr == nil then
+    for b, t in pairs(diagnostic_cache) do
+      for _, v in pairs(t) do
+        add_all_diags(b, v)
+      end
+    end
+  elseif namespace == nil then
+    bufnr = vim._resolve_bufnr(bufnr)
+    for iter_namespace in pairs(diagnostic_cache[bufnr]) do
+      add_all_diags(bufnr, diagnostic_cache[bufnr][iter_namespace])
+    end
+  elseif bufnr == nil then
+    for b, t in pairs(diagnostic_cache) do
+      for _, iter_namespace in ipairs(namespace) do
+        add_all_diags(b, t[iter_namespace] or {})
+      end
+    end
+  else
+    bufnr = vim._resolve_bufnr(bufnr)
+    for _, iter_namespace in ipairs(namespace) do
+      add_all_diags(bufnr, diagnostic_cache[bufnr][iter_namespace] or {})
+    end
   end
 
   return diagnostics
 end
 
----@private
+--- @param loclist boolean
+--- @param opts vim.diagnostic.setqflist.Opts|vim.diagnostic.setloclist.Opts?
 local function set_list(loclist, opts)
   opts = opts or {}
-  local open = vim.F.if_nil(opts.open, true)
+  local open = if_nil(opts.open, true)
   local title = opts.title or 'Diagnostics'
   local winnr = opts.winnr or 0
-  local bufnr
+  local bufnr --- @type integer?
   if loclist then
-    bufnr = vim.api.nvim_win_get_buf(winnr)
+    bufnr = api.nvim_win_get_buf(winnr)
   end
   -- Don't clamp line numbers since the quickfix list can already handle line
   -- numbers beyond the end of the buffer
-  local diagnostics = get_diagnostics(bufnr, opts, false)
+  local diagnostics = get_diagnostics(bufnr, opts --[[@as vim.diagnostic.GetOpts]], false)
   local items = M.toqflist(diagnostics)
+  local qf_id = nil
   if loclist then
-    vim.fn.setloclist(winnr, {}, ' ', { title = title, items = items })
+    vim.fn.setloclist(winnr, {}, 'u', { title = title, items = items })
   else
-    vim.fn.setqflist({}, ' ', { title = title, items = items })
+    qf_id = get_qf_id_for_title(title)
+
+    -- If we already have a diagnostics quickfix, update it rather than creating a new one.
+    -- This avoids polluting the finite set of quickfix lists, and preserves the currently selected
+    -- entry.
+    vim.fn.setqflist({}, qf_id and 'u' or ' ', {
+      title = title,
+      items = items,
+      id = qf_id,
+    })
   end
+
   if open then
-    vim.api.nvim_command(loclist and 'lopen' or 'botright copen')
+    if not loclist then
+      -- First navigate to the diagnostics quickfix list.
+      --- @type integer
+      local nr = vim.fn.getqflist({ id = qf_id, nr = 0 }).nr
+      api.nvim_command(('silent %dchistory'):format(nr))
+
+      -- Now open the quickfix list.
+      api.nvim_command('botright cwindow')
+    else
+      api.nvim_command('lwindow')
+    end
   end
 end
 
----@private
-local function next_diagnostic(position, search_forward, bufnr, opts, namespace)
+--- Jump to the diagnostic with the highest severity. First sort the
+--- diagnostics by severity. The first diagnostic then contains the highest severity, and we can
+--- discard all diagnostics with a lower severity.
+--- @param diagnostics vim.Diagnostic[]
+local function filter_highest(diagnostics)
+  table.sort(diagnostics, function(a, b)
+    return a.severity < b.severity
+  end)
+
+  -- Find the first diagnostic where the severity does not match the highest severity, and remove
+  -- that element and all subsequent elements from the array
+  local worst = (diagnostics[1] or {}).severity
+  local len = #diagnostics
+  for i = 2, len do
+    if diagnostics[i].severity ~= worst then
+      for j = i, len do
+        diagnostics[j] = nil
+      end
+      break
+    end
+  end
+end
+
+--- @param search_forward boolean
+--- @param opts vim.diagnostic.JumpOpts?
+--- @return vim.Diagnostic?
+local function next_diagnostic(search_forward, opts)
+  opts = opts or {}
+
+  -- Support deprecated win_id alias
+  if opts.win_id then
+    vim.deprecate('opts.win_id', 'opts.winid', '0.13')
+    opts.winid = opts.win_id
+    opts.win_id = nil --- @diagnostic disable-line
+  end
+
+  -- Support deprecated cursor_position alias
+  if opts.cursor_position then
+    vim.deprecate('opts.cursor_position', 'opts.pos', '0.13')
+    opts.pos = opts.cursor_position
+    opts.cursor_position = nil --- @diagnostic disable-line
+  end
+
+  local winid = opts.winid or api.nvim_get_current_win()
+  local bufnr = api.nvim_win_get_buf(winid)
+  local position = opts.pos or api.nvim_win_get_cursor(winid)
+
+  -- Adjust row to be 0-indexed
   position[1] = position[1] - 1
-  bufnr = get_bufnr(bufnr)
-  local wrap = vim.F.if_nil(opts.wrap, true)
-  local line_count = vim.api.nvim_buf_line_count(bufnr)
-  local diagnostics =
-    get_diagnostics(bufnr, vim.tbl_extend('keep', opts, { namespace = namespace }), true)
+
+  local wrap = if_nil(opts.wrap, true)
+
+  local diagnostics = get_diagnostics(bufnr, opts, true)
+
+  if opts._highest then
+    filter_highest(diagnostics)
+  end
+
   local line_diagnostics = diagnostic_lines(diagnostics)
+
+  local line_count = api.nvim_buf_line_count(bufnr)
   for i = 0, line_count do
     local offset = i * (search_forward and 1 or -1)
     local lnum = position[1] + offset
@@ -506,26 +974,29 @@ local function next_diagnostic(position, search_forward, bufnr, opts, namespace)
       lnum = (lnum + line_count) % line_count
     end
     if line_diagnostics[lnum] and not vim.tbl_isempty(line_diagnostics[lnum]) then
-      local line_length = #vim.api.nvim_buf_get_lines(bufnr, lnum, lnum + 1, true)[1]
+      local line_length = #api.nvim_buf_get_lines(bufnr, lnum, lnum + 1, true)[1]
+      --- @type function, function
       local sort_diagnostics, is_next
       if search_forward then
         sort_diagnostics = function(a, b)
           return a.col < b.col
         end
         is_next = function(d)
-          return math.min(d.col, line_length - 1) > position[2]
+          return math.min(d.col, math.max(line_length - 1, 0)) > position[2]
         end
       else
         sort_diagnostics = function(a, b)
           return a.col > b.col
         end
         is_next = function(d)
-          return math.min(d.col, line_length - 1) < position[2]
+          return math.min(d.col, math.max(line_length - 1, 0)) < position[2]
         end
       end
       table.sort(line_diagnostics[lnum], sort_diagnostics)
       if i == 0 then
-        for _, v in pairs(line_diagnostics[lnum]) do
+        for _, v in
+          pairs(line_diagnostics[lnum] --[[@as table<string,any>]])
+        do
           if is_next(v) then
             return v
           end
@@ -537,31 +1008,41 @@ local function next_diagnostic(position, search_forward, bufnr, opts, namespace)
   end
 end
 
----@private
-local function diagnostic_move_pos(opts, pos)
-  opts = opts or {}
-
-  local float = vim.F.if_nil(opts.float, true)
-  local win_id = opts.win_id or vim.api.nvim_get_current_win()
-
-  if not pos then
-    vim.api.nvim_echo({ { 'No more valid diagnostics to move to', 'WarningMsg' } }, true, {})
+--- Move the cursor to the given diagnostic.
+---
+--- @param diagnostic vim.Diagnostic?
+--- @param opts vim.diagnostic.JumpOpts?
+local function goto_diagnostic(diagnostic, opts)
+  if not diagnostic then
+    api.nvim_echo({ { 'No more valid diagnostics to move to', 'WarningMsg' } }, true, {})
     return
   end
 
-  vim.api.nvim_win_call(win_id, function()
+  opts = opts or {}
+
+  -- Support deprecated win_id alias
+  if opts.win_id then
+    vim.deprecate('opts.win_id', 'opts.winid', '0.13')
+    opts.winid = opts.win_id
+    opts.win_id = nil --- @diagnostic disable-line
+  end
+
+  local winid = opts.winid or api.nvim_get_current_win()
+
+  vim._with({ win = winid }, function()
     -- Save position in the window's jumplist
     vim.cmd("normal! m'")
-    vim.api.nvim_win_set_cursor(win_id, { pos[1] + 1, pos[2] })
+    api.nvim_win_set_cursor(winid, { diagnostic.lnum + 1, diagnostic.col })
     -- Open folds under the cursor
     vim.cmd('normal! zv')
   end)
 
-  if float then
-    local float_opts = type(float) == 'table' and float or {}
+  local float_opts = opts.float
+  if float_opts then
+    float_opts = type(float_opts) == 'table' and float_opts or {}
     vim.schedule(function()
       M.open_float(vim.tbl_extend('keep', float_opts, {
-        bufnr = vim.api.nvim_win_get_buf(win_id),
+        bufnr = api.nvim_win_get_buf(winid),
         scope = 'cursor',
         focus = false,
       }))
@@ -578,76 +1059,29 @@ end
 --- followed by namespace configuration, and finally global configuration.
 ---
 --- For example, if a user enables virtual text globally with
---- <pre>
----   vim.diagnostic.config({ virtual_text = true })
---- </pre>
+---
+--- ```lua
+--- vim.diagnostic.config({ virtual_text = true })
+--- ```
 ---
 --- and a diagnostic producer sets diagnostics with
---- <pre>
----   vim.diagnostic.set(ns, 0, diagnostics, { virtual_text = false })
---- </pre>
+---
+--- ```lua
+--- vim.diagnostic.set(ns, 0, diagnostics, { virtual_text = false })
+--- ```
 ---
 --- then virtual text will not be enabled for those diagnostics.
 ---
----@note Each of the configuration options below accepts one of the following:
----         - `false`: Disable this feature
----         - `true`: Enable this feature, use default settings.
----         - `table`: Enable this feature with overrides. Use an empty table to use default values.
----         - `function`: Function with signature (namespace, bufnr) that returns any of the above.
----
----@param opts table|nil When omitted or "nil", retrieve the current configuration. Otherwise, a
----                      configuration table with the following keys:
----       - underline: (default true) Use underline for diagnostics. Options:
----                    * severity: Only underline diagnostics matching the given severity
----                    |diagnostic-severity|
----       - virtual_text: (default true) Use virtual text for diagnostics. If multiple diagnostics
----                       are set for a namespace, one prefix per diagnostic + the last diagnostic
----                       message are shown.
----                       Options:
----                       * severity: Only show virtual text for diagnostics matching the given
----                       severity |diagnostic-severity|
----                       * source: (boolean or string) Include the diagnostic source in virtual
----                                 text. Use "if_many" to only show sources if there is more than
----                                 one diagnostic source in the buffer. Otherwise, any truthy value
----                                 means to always show the diagnostic source.
----                       * spacing: (number) Amount of empty spaces inserted at the beginning
----                                  of the virtual text.
----                       * prefix: (string) Prepend diagnostic message with prefix.
----                       * format: (function) A function that takes a diagnostic as input and
----                                 returns a string. The return value is the text used to display
----                                 the diagnostic. Example:
----                       <pre>
----                       function(diagnostic)
----                         if diagnostic.severity == vim.diagnostic.severity.ERROR then
----                           return string.format("E: %s", diagnostic.message)
----                         end
----                         return diagnostic.message
----                       end
----                       </pre>
----       - signs: (default true) Use signs for diagnostics. Options:
----                * severity: Only show signs for diagnostics matching the given severity
----                |diagnostic-severity|
----                * priority: (number, default 10) Base priority to use for signs. When
----                {severity_sort} is used, the priority of a sign is adjusted based on
----                its severity. Otherwise, all signs use the same priority.
----       - float: Options for floating windows. See |vim.diagnostic.open_float()|.
----       - update_in_insert: (default false) Update diagnostics in Insert mode (if false,
----                           diagnostics are updated on InsertLeave)
----       - severity_sort: (default false) Sort diagnostics by severity. This affects the order in
----                         which signs and virtual text are displayed. When true, higher severities
----                         are displayed before lower severities (e.g. ERROR is displayed before WARN).
----                         Options:
----                         * reverse: (boolean) Reverse sort order
----
----@param namespace number|nil Update the options for the given namespace. When omitted, update the
----                            global diagnostic options.
+---@param opts vim.diagnostic.Opts? When omitted or `nil`, retrieve the current
+---       configuration. Otherwise, a configuration table (see |vim.diagnostic.Opts|).
+---@param namespace integer? Update the options for the given namespace.
+---                          When omitted, update the global diagnostic options.
+---@return vim.diagnostic.Opts? : Current diagnostic config if {opts} is omitted.
 function M.config(opts, namespace)
-  vim.validate({
-    opts = { opts, 't', true },
-    namespace = { namespace, 'n', true },
-  })
+  vim.validate('opts', opts, 'table', true)
+  vim.validate('namespace', namespace, 'number', true)
 
-  local t
+  local t --- @type vim.diagnostic.Opts
   if namespace then
     local ns = M.get_namespace(namespace)
     t = ns.opts
@@ -657,25 +1091,25 @@ function M.config(opts, namespace)
 
   if not opts then
     -- Return current config
-    return vim.deepcopy(t)
+    return vim.deepcopy(t, true)
   end
 
-  for k, v in pairs(opts) do
+  for k, v in
+    pairs(opts --[[@as table<any,any>]])
+  do
     t[k] = v
   end
 
   if namespace then
     for bufnr, v in pairs(diagnostic_cache) do
-      if vim.api.nvim_buf_is_loaded(bufnr) and v[namespace] then
+      if v[namespace] then
         M.show(namespace, bufnr)
       end
     end
   else
     for bufnr, v in pairs(diagnostic_cache) do
-      if vim.api.nvim_buf_is_loaded(bufnr) then
-        for ns in pairs(v) do
-          M.show(ns, bufnr)
-        end
+      for ns in pairs(v) do
+        M.show(ns, bufnr)
       end
     end
   end
@@ -683,23 +1117,17 @@ end
 
 --- Set diagnostics for the given namespace and buffer.
 ---
----@param namespace number The diagnostic namespace
----@param bufnr number Buffer number
----@param diagnostics table A list of diagnostic items |diagnostic-structure|
----@param opts table|nil Display options to pass to |vim.diagnostic.show()|
+---@param namespace integer The diagnostic namespace
+---@param bufnr integer Buffer number
+---@param diagnostics vim.Diagnostic[]
+---@param opts? vim.diagnostic.Opts Display options to pass to |vim.diagnostic.show()|
 function M.set(namespace, bufnr, diagnostics, opts)
-  vim.validate({
-    namespace = { namespace, 'n' },
-    bufnr = { bufnr, 'n' },
-    diagnostics = {
-      diagnostics,
-      vim.tbl_islist,
-      'a list of diagnostics',
-    },
-    opts = { opts, 't', true },
-  })
+  vim.validate('namespace', namespace, 'number')
+  vim.validate('bufnr', bufnr, 'number')
+  vim.validate('diagnostics', diagnostics, vim.islist, 'a list of diagnostics')
+  vim.validate('opts', opts, 'table', true)
 
-  bufnr = get_bufnr(bufnr)
+  bufnr = vim._resolve_bufnr(bufnr)
 
   if vim.tbl_isempty(diagnostics) then
     diagnostic_cache[bufnr][namespace] = nil
@@ -707,26 +1135,25 @@ function M.set(namespace, bufnr, diagnostics, opts)
     set_diagnostic_cache(namespace, bufnr, diagnostics)
   end
 
-  if vim.api.nvim_buf_is_loaded(bufnr) then
-    M.show(namespace, bufnr, nil, opts)
-  end
+  M.show(namespace, bufnr, nil, opts)
 
-  vim.api.nvim_exec_autocmds('DiagnosticChanged', {
+  api.nvim_exec_autocmds('DiagnosticChanged', {
     modeline = false,
     buffer = bufnr,
+    -- TODO(lewis6991): should this be deepcopy()'d like they are in vim.diagnostic.get()
     data = { diagnostics = diagnostics },
   })
 end
 
 --- Get namespace metadata.
 ---
----@param namespace number Diagnostic namespace
----@return table Namespace metadata
+---@param namespace integer Diagnostic namespace
+---@return vim.diagnostic.NS : Namespace metadata
 function M.get_namespace(namespace)
-  vim.validate({ namespace = { namespace, 'n' } })
+  vim.validate('namespace', namespace, 'number')
   if not all_namespaces[namespace] then
-    local name
-    for k, v in pairs(vim.api.nvim_get_namespaces()) do
+    local name --- @type string?
+    for k, v in pairs(api.nvim_get_namespaces()) do
       if namespace == v then
         name = k
         break
@@ -746,48 +1173,68 @@ end
 
 --- Get current diagnostic namespaces.
 ---
----@return table A list of active diagnostic namespaces |vim.diagnostic|.
+---@return table<integer,vim.diagnostic.NS> : List of active diagnostic namespaces |vim.diagnostic|.
 function M.get_namespaces()
-  return vim.deepcopy(all_namespaces)
+  return vim.deepcopy(all_namespaces, true)
 end
 
 --- Get current diagnostics.
 ---
----@param bufnr number|nil Buffer number to get diagnostics from. Use 0 for
----                        current buffer or nil for all buffers.
----@param opts table|nil A table with the following keys:
----                        - namespace: (number) Limit diagnostics to the given namespace.
----                        - lnum: (number) Limit diagnostics to the given line number.
----                        - severity: See |diagnostic-severity|.
----@return table A list of diagnostic items |diagnostic-structure|.
+--- Modifying diagnostics in the returned table has no effect.
+--- To set diagnostics in a buffer, use |vim.diagnostic.set()|.
+---
+---@param bufnr integer? Buffer number to get diagnostics from. Use 0 for
+---                      current buffer or nil for all buffers.
+---@param opts? vim.diagnostic.GetOpts
+---@return vim.Diagnostic[] : Fields `bufnr`, `end_lnum`, `end_col`, and `severity`
+---                           are guaranteed to be present.
 function M.get(bufnr, opts)
-  vim.validate({
-    bufnr = { bufnr, 'n', true },
-    opts = { opts, 't', true },
-  })
+  vim.validate('bufnr', bufnr, 'number', true)
+  vim.validate('opts', opts, 'table', true)
 
-  return get_diagnostics(bufnr, opts, false)
+  return vim.deepcopy(get_diagnostics(bufnr, opts, false), true)
+end
+
+--- Get current diagnostics count.
+---
+---@param bufnr? integer Buffer number to get diagnostics from. Use 0 for
+---                      current buffer or nil for all buffers.
+---@param opts? vim.diagnostic.GetOpts
+---@return table : Table with actually present severity values as keys
+---                (see |diagnostic-severity|) and integer counts as values.
+function M.count(bufnr, opts)
+  vim.validate('bufnr', bufnr, 'number', true)
+  vim.validate('opts', opts, 'table', true)
+
+  local diagnostics = get_diagnostics(bufnr, opts, false)
+  local count = {} --- @type table<integer,integer>
+  for i = 1, #diagnostics do
+    local severity = diagnostics[i].severity --[[@as integer]]
+    count[severity] = (count[severity] or 0) + 1
+  end
+  return count
 end
 
 --- Get the previous diagnostic closest to the cursor position.
 ---
----@param opts table See |vim.diagnostic.goto_next()|
----@return table Previous diagnostic
+---@param opts? vim.diagnostic.JumpOpts
+---@return vim.Diagnostic? : Previous diagnostic
 function M.get_prev(opts)
-  opts = opts or {}
-
-  local win_id = opts.win_id or vim.api.nvim_get_current_win()
-  local bufnr = vim.api.nvim_win_get_buf(win_id)
-  local cursor_position = opts.cursor_position or vim.api.nvim_win_get_cursor(win_id)
-
-  return next_diagnostic(cursor_position, false, bufnr, opts, opts.namespace)
+  return next_diagnostic(false, opts)
 end
 
 --- Return the position of the previous diagnostic in the current buffer.
 ---
----@param opts table See |vim.diagnostic.goto_next()|
----@return table Previous diagnostic position as a (row, col) tuple.
+---@param opts? vim.diagnostic.JumpOpts
+---@return table|false: Previous diagnostic position as a `(row, col)` tuple
+---                     or `false` if there is no prior diagnostic.
+---@deprecated
 function M.get_prev_pos(opts)
+  vim.deprecate(
+    'vim.diagnostic.get_prev_pos()',
+    'access the lnum and col fields from get_prev() instead',
+    '0.13'
+  )
   local prev = M.get_prev(opts)
   if not prev then
     return false
@@ -797,30 +1244,35 @@ function M.get_prev_pos(opts)
 end
 
 --- Move to the previous diagnostic in the current buffer.
----@param opts table|nil See |vim.diagnostic.goto_next()|
+---@param opts? vim.diagnostic.JumpOpts
+---@deprecated
 function M.goto_prev(opts)
-  return diagnostic_move_pos(opts, M.get_prev_pos(opts))
+  vim.deprecate('vim.diagnostic.goto_prev()', 'vim.diagnostic.jump()', '0.13')
+  opts = opts or {}
+  opts.float = if_nil(opts.float, true)
+  goto_diagnostic(M.get_prev(opts), opts)
 end
 
 --- Get the next diagnostic closest to the cursor position.
 ---
----@param opts table See |vim.diagnostic.goto_next()|
----@return table Next diagnostic
+---@param opts? vim.diagnostic.JumpOpts
+---@return vim.Diagnostic? : Next diagnostic
 function M.get_next(opts)
-  opts = opts or {}
-
-  local win_id = opts.win_id or vim.api.nvim_get_current_win()
-  local bufnr = vim.api.nvim_win_get_buf(win_id)
-  local cursor_position = opts.cursor_position or vim.api.nvim_win_get_cursor(win_id)
-
-  return next_diagnostic(cursor_position, true, bufnr, opts, opts.namespace)
+  return next_diagnostic(true, opts)
 end
 
 --- Return the position of the next diagnostic in the current buffer.
 ---
----@param opts table See |vim.diagnostic.goto_next()|
----@return table Next diagnostic position as a (row, col) tuple.
+---@param opts? vim.diagnostic.JumpOpts
+---@return table|false : Next diagnostic position as a `(row, col)` tuple or false if no next
+---                      diagnostic.
+---@deprecated
 function M.get_next_pos(opts)
+  vim.deprecate(
+    'vim.diagnostic.get_next_pos()',
+    'access the lnum and col fields from get_next() instead',
+    '0.13'
+  )
   local next = M.get_next(opts)
   if not next then
     return false
@@ -829,127 +1281,272 @@ function M.get_next_pos(opts)
   return { next.lnum, next.col }
 end
 
+--- A table with the following keys:
+--- @class vim.diagnostic.GetOpts
+---
+--- Limit diagnostics to one or more namespaces.
+--- @field namespace? integer[]|integer
+---
+--- Limit diagnostics to those spanning the specified line number.
+--- @field lnum? integer
+---
+--- See |diagnostic-severity|.
+--- @field severity? vim.diagnostic.SeverityFilter
+
+--- Configuration table with the keys listed below. Some parameters can have their default values
+--- changed with |vim.diagnostic.config()|.
+--- @class vim.diagnostic.JumpOpts : vim.diagnostic.GetOpts
+---
+--- The diagnostic to jump to. Mutually exclusive with {count}, {namespace},
+--- and {severity}.
+--- @field diagnostic? vim.Diagnostic
+---
+--- The number of diagnostics to move by, starting from {pos}. A positive
+--- integer moves forward by {count} diagnostics, while a negative integer moves
+--- backward by {count} diagnostics. Mutually exclusive with {diagnostic}.
+--- @field count? integer
+---
+--- Cursor position as a `(row, col)` tuple. See |nvim_win_get_cursor()|. Used
+--- to find the nearest diagnostic when {count} is used. Only used when {count}
+--- is non-nil. Default is the current cursor position.
+--- @field pos? [integer,integer]
+---
+--- Whether to loop around file or not. Similar to 'wrapscan'.
+--- (default: `true`)
+--- @field wrap? boolean
+---
+--- See |diagnostic-severity|.
+--- @field severity? vim.diagnostic.SeverityFilter
+---
+--- Go to the diagnostic with the highest severity.
+--- (default: `false`)
+--- @field package _highest? boolean
+---
+--- If `true`, call |vim.diagnostic.open_float()| after moving.
+--- If a table, pass the table as the {opts} parameter to |vim.diagnostic.open_float()|.
+--- Unless overridden, the float will show diagnostics at the new cursor
+--- position (as if "cursor" were passed to the "scope" option).
+--- (default: `false`)
+--- @field float? boolean|vim.diagnostic.Opts.Float
+---
+--- Window ID
+--- (default: `0`)
+--- @field winid? integer
+
+--- Move to a diagnostic.
+---
+--- @param opts vim.diagnostic.JumpOpts
+--- @return vim.Diagnostic? # The diagnostic that was moved to.
+function M.jump(opts)
+  vim.validate('opts', opts, 'table')
+
+  -- One of "diagnostic" or "count" must be provided
+  assert(
+    opts.diagnostic or opts.count,
+    'One of "diagnostic" or "count" must be specified in the options to vim.diagnostic.jump()'
+  )
+
+  -- Apply configuration options from vim.diagnostic.config()
+  opts = vim.tbl_deep_extend('keep', opts, global_diagnostic_options.jump)
+
+  if opts.diagnostic then
+    goto_diagnostic(opts.diagnostic, opts)
+    return opts.diagnostic
+  end
+
+  local count = opts.count
+  if count == 0 then
+    return nil
+  end
+
+  -- Support deprecated cursor_position alias
+  if opts.cursor_position then
+    vim.deprecate('opts.cursor_position', 'opts.pos', '0.13')
+    opts.pos = opts.cursor_position
+    opts.cursor_position = nil --- @diagnostic disable-line
+  end
+
+  local diag = nil
+  while count ~= 0 do
+    local next = next_diagnostic(count > 0, opts)
+    if not next then
+      break
+    end
+
+    -- Update cursor position
+    opts.pos = { next.lnum + 1, next.col }
+
+    if count > 0 then
+      count = count - 1
+    else
+      count = count + 1
+    end
+    diag = next
+  end
+
+  goto_diagnostic(diag, opts)
+
+  return diag
+end
+
 --- Move to the next diagnostic.
 ---
----@param opts table|nil Configuration table with the following keys:
----         - namespace: (number) Only consider diagnostics from the given namespace.
----         - cursor_position: (cursor position) Cursor position as a (row, col) tuple. See
----                          |nvim_win_get_cursor()|. Defaults to the current cursor position.
----         - wrap: (boolean, default true) Whether to loop around file or not. Similar to 'wrapscan'.
----         - severity: See |diagnostic-severity|.
----         - float: (boolean or table, default true) If "true", call |vim.diagnostic.open_float()|
----                    after moving. If a table, pass the table as the {opts} parameter to
----                    |vim.diagnostic.open_float()|. Unless overridden, the float will show
----                    diagnostics at the new cursor position (as if "cursor" were passed to
----                    the "scope" option).
----         - win_id: (number, default 0) Window ID
+---@param opts? vim.diagnostic.JumpOpts
+---@deprecated
 function M.goto_next(opts)
-  return diagnostic_move_pos(opts, M.get_next_pos(opts))
+  vim.deprecate('vim.diagnostic.goto_next()', 'vim.diagnostic.jump()', '0.13')
+  opts = opts or {}
+  opts.float = if_nil(opts.float, true)
+  goto_diagnostic(M.get_next(opts), opts)
 end
 
 M.handlers.signs = {
   show = function(namespace, bufnr, diagnostics, opts)
-    vim.validate({
-      namespace = { namespace, 'n' },
-      bufnr = { bufnr, 'n' },
-      diagnostics = {
-        diagnostics,
-        vim.tbl_islist,
-        'a list of diagnostics',
-      },
-      opts = { opts, 't', true },
-    })
+    vim.validate('namespace', namespace, 'number')
+    vim.validate('bufnr', bufnr, 'number')
+    vim.validate('diagnostics', diagnostics, vim.islist, 'a list of diagnostics')
+    vim.validate('opts', opts, 'table', true)
 
-    bufnr = get_bufnr(bufnr)
+    bufnr = vim._resolve_bufnr(bufnr)
     opts = opts or {}
 
-    if opts.signs and opts.signs.severity then
-      diagnostics = filter_by_severity(opts.signs.severity, diagnostics)
+    if not api.nvim_buf_is_loaded(bufnr) then
+      return
     end
-
-    define_default_signs()
 
     -- 10 is the default sign priority when none is explicitly specified
     local priority = opts.signs and opts.signs.priority or 10
-    local get_priority
-    if opts.severity_sort then
-      if type(opts.severity_sort) == 'table' and opts.severity_sort.reverse then
-        get_priority = function(severity)
-          return priority + (severity - vim.diagnostic.severity.ERROR)
-        end
-      else
-        get_priority = function(severity)
-          return priority + (vim.diagnostic.severity.HINT - severity)
-        end
-      end
-    else
-      get_priority = function()
-        return priority
-      end
-    end
+    local get_priority = severity_to_extmark_priority(priority, opts)
 
     local ns = M.get_namespace(namespace)
-    if not ns.user_data.sign_group then
-      ns.user_data.sign_group = string.format('vim.diagnostic.%s', ns.name)
+    if not ns.user_data.sign_ns then
+      ns.user_data.sign_ns =
+        api.nvim_create_namespace(string.format('nvim.%s.diagnostic.signs', ns.name))
     end
 
-    local sign_group = ns.user_data.sign_group
+    -- Handle legacy diagnostic sign definitions
+    -- These were deprecated in 0.10 and will be removed in 0.12
+    if opts.signs and not opts.signs.text and not opts.signs.numhl then
+      for _, v in ipairs({ 'Error', 'Warn', 'Info', 'Hint' }) do
+        local name = string.format('DiagnosticSign%s', v)
+        local sign = vim.fn.sign_getdefined(name)[1]
+        if sign then
+          local severity = M.severity[v:upper()]
+          vim.deprecate(
+            'Defining diagnostic signs with :sign-define or sign_define()',
+            'vim.diagnostic.config()',
+            '0.12'
+          )
+
+          if not opts.signs.text then
+            opts.signs.text = {}
+          end
+
+          if not opts.signs.numhl then
+            opts.signs.numhl = {}
+          end
+
+          if not opts.signs.linehl then
+            opts.signs.linehl = {}
+          end
+
+          if opts.signs.text[severity] == nil then
+            opts.signs.text[severity] = sign.text or ''
+          end
+
+          if opts.signs.numhl[severity] == nil then
+            opts.signs.numhl[severity] = sign.numhl
+          end
+
+          if opts.signs.linehl[severity] == nil then
+            opts.signs.linehl[severity] = sign.linehl
+          end
+        end
+      end
+    end
+
+    local text = {} ---@type table<vim.diagnostic.Severity|string, string>
+    for k in pairs(M.severity) do
+      if opts.signs.text and opts.signs.text[k] then
+        text[k] = opts.signs.text[k]
+      elseif type(k) == 'string' and not text[k] then
+        text[k] = string.sub(k, 1, 1):upper()
+      end
+    end
+
+    local numhl = opts.signs.numhl or {}
+    local linehl = opts.signs.linehl or {}
+
+    local line_count = api.nvim_buf_line_count(bufnr)
+
     for _, diagnostic in ipairs(diagnostics) do
-      vim.fn.sign_place(0, sign_group, sign_highlight_map[diagnostic.severity], bufnr, {
-        priority = get_priority(diagnostic.severity),
-        lnum = diagnostic.lnum + 1,
-      })
+      if diagnostic.lnum <= line_count then
+        api.nvim_buf_set_extmark(bufnr, ns.user_data.sign_ns, diagnostic.lnum, 0, {
+          sign_text = text[diagnostic.severity] or text[M.severity[diagnostic.severity]] or 'U',
+          sign_hl_group = sign_highlight_map[diagnostic.severity],
+          number_hl_group = numhl[diagnostic.severity],
+          line_hl_group = linehl[diagnostic.severity],
+          priority = get_priority(diagnostic.severity),
+        })
+      end
     end
   end,
+
+  --- @param namespace integer
+  --- @param bufnr integer
   hide = function(namespace, bufnr)
     local ns = M.get_namespace(namespace)
-    if ns.user_data.sign_group then
-      vim.fn.sign_unplace(ns.user_data.sign_group, { buffer = bufnr })
+    if ns.user_data.sign_ns and api.nvim_buf_is_valid(bufnr) then
+      api.nvim_buf_clear_namespace(bufnr, ns.user_data.sign_ns, 0, -1)
     end
   end,
 }
 
 M.handlers.underline = {
   show = function(namespace, bufnr, diagnostics, opts)
-    vim.validate({
-      namespace = { namespace, 'n' },
-      bufnr = { bufnr, 'n' },
-      diagnostics = {
-        diagnostics,
-        vim.tbl_islist,
-        'a list of diagnostics',
-      },
-      opts = { opts, 't', true },
-    })
+    vim.validate('namespace', namespace, 'number')
+    vim.validate('bufnr', bufnr, 'number')
+    vim.validate('diagnostics', diagnostics, vim.islist, 'a list of diagnostics')
+    vim.validate('opts', opts, 'table', true)
 
-    bufnr = get_bufnr(bufnr)
+    bufnr = vim._resolve_bufnr(bufnr)
     opts = opts or {}
 
-    if opts.underline and opts.underline.severity then
-      diagnostics = filter_by_severity(opts.underline.severity, diagnostics)
+    if not vim.api.nvim_buf_is_loaded(bufnr) then
+      return
     end
 
     local ns = M.get_namespace(namespace)
     if not ns.user_data.underline_ns then
-      ns.user_data.underline_ns = vim.api.nvim_create_namespace('')
+      ns.user_data.underline_ns =
+        api.nvim_create_namespace(string.format('nvim.%s.diagnostic.underline', ns.name))
     end
 
     local underline_ns = ns.user_data.underline_ns
-    for _, diagnostic in ipairs(diagnostics) do
-      local higroup = underline_highlight_map[diagnostic.severity]
+    local get_priority = severity_to_extmark_priority(vim.hl.priorities.diagnostics, opts)
 
-      if higroup == nil then
-        -- Default to error if we don't have a highlight associated
-        higroup = underline_highlight_map.Error
+    for _, diagnostic in ipairs(diagnostics) do
+      -- Default to error if we don't have a highlight associated
+      local higroup = underline_highlight_map[assert(diagnostic.severity)]
+        or underline_highlight_map[vim.diagnostic.severity.ERROR]
+
+      if diagnostic._tags then
+        -- TODO(lewis6991): we should be able to stack these.
+        if diagnostic._tags.unnecessary then
+          higroup = 'DiagnosticUnnecessary'
+        end
+        if diagnostic._tags.deprecated then
+          higroup = 'DiagnosticDeprecated'
+        end
       end
 
-      vim.highlight.range(
+      vim.hl.range(
         bufnr,
         underline_ns,
         higroup,
         { diagnostic.lnum, diagnostic.col },
         { diagnostic.end_lnum, diagnostic.end_col },
-        { priority = vim.highlight.priorities.diagnostics }
+        { priority = get_priority(diagnostic.severity) }
       )
     end
     save_extmarks(underline_ns, bufnr)
@@ -958,28 +1555,27 @@ M.handlers.underline = {
     local ns = M.get_namespace(namespace)
     if ns.user_data.underline_ns then
       diagnostic_cache_extmarks[bufnr][ns.user_data.underline_ns] = {}
-      vim.api.nvim_buf_clear_namespace(bufnr, ns.user_data.underline_ns, 0, -1)
+      if api.nvim_buf_is_valid(bufnr) then
+        api.nvim_buf_clear_namespace(bufnr, ns.user_data.underline_ns, 0, -1)
+      end
     end
   end,
 }
 
 M.handlers.virtual_text = {
   show = function(namespace, bufnr, diagnostics, opts)
-    vim.validate({
-      namespace = { namespace, 'n' },
-      bufnr = { bufnr, 'n' },
-      diagnostics = {
-        diagnostics,
-        vim.tbl_islist,
-        'a list of diagnostics',
-      },
-      opts = { opts, 't', true },
-    })
+    vim.validate('namespace', namespace, 'number')
+    vim.validate('bufnr', bufnr, 'number')
+    vim.validate('diagnostics', diagnostics, vim.islist, 'a list of diagnostics')
+    vim.validate('opts', opts, 'table', true)
 
-    bufnr = get_bufnr(bufnr)
+    bufnr = vim._resolve_bufnr(bufnr)
     opts = opts or {}
 
-    local severity
+    if not vim.api.nvim_buf_is_loaded(bufnr) then
+      return
+    end
+
     if opts.virtual_text then
       if opts.virtual_text.format then
         diagnostics = reformat_diagnostics(opts.virtual_text.format, diagnostics)
@@ -990,28 +1586,26 @@ M.handlers.virtual_text = {
       then
         diagnostics = prefix_source(diagnostics)
       end
-      if opts.virtual_text.severity then
-        severity = opts.virtual_text.severity
-      end
     end
 
     local ns = M.get_namespace(namespace)
     if not ns.user_data.virt_text_ns then
-      ns.user_data.virt_text_ns = vim.api.nvim_create_namespace('')
+      ns.user_data.virt_text_ns =
+        api.nvim_create_namespace(string.format('nvim.%s.diagnostic.virtual_text', ns.name))
     end
 
     local virt_text_ns = ns.user_data.virt_text_ns
     local buffer_line_diagnostics = diagnostic_lines(diagnostics)
     for line, line_diagnostics in pairs(buffer_line_diagnostics) do
-      if severity then
-        line_diagnostics = filter_by_severity(severity, line_diagnostics)
-      end
       local virt_texts = M._get_virt_text_chunks(line_diagnostics, opts.virtual_text)
 
       if virt_texts then
-        vim.api.nvim_buf_set_extmark(bufnr, virt_text_ns, line, 0, {
-          hl_mode = 'combine',
+        api.nvim_buf_set_extmark(bufnr, virt_text_ns, line, 0, {
+          hl_mode = opts.virtual_text.hl_mode or 'combine',
           virt_text = virt_texts,
+          virt_text_pos = opts.virtual_text.virt_text_pos,
+          virt_text_hide = opts.virtual_text.virt_text_hide,
+          virt_text_win_col = opts.virtual_text.virt_text_win_col,
         })
       end
     end
@@ -1021,7 +1615,267 @@ M.handlers.virtual_text = {
     local ns = M.get_namespace(namespace)
     if ns.user_data.virt_text_ns then
       diagnostic_cache_extmarks[bufnr][ns.user_data.virt_text_ns] = {}
-      vim.api.nvim_buf_clear_namespace(bufnr, ns.user_data.virt_text_ns, 0, -1)
+      if api.nvim_buf_is_valid(bufnr) then
+        api.nvim_buf_clear_namespace(bufnr, ns.user_data.virt_text_ns, 0, -1)
+      end
+    end
+  end,
+}
+
+--- Some characters (like tabs) take up more than one cell. Additionally, inline
+--- virtual text can make the distance between 2 columns larger.
+--- A diagnostic aligned under such characters needs to account for that and that
+--- many spaces to its left.
+--- @param bufnr integer
+--- @param lnum integer
+--- @param start_col integer
+--- @param end_col integer
+--- @return integer
+local function distance_between_cols(bufnr, lnum, start_col, end_col)
+  return api.nvim_buf_call(bufnr, function()
+    local s = vim.fn.virtcol({ lnum + 1, start_col })
+    local e = vim.fn.virtcol({ lnum + 1, end_col + 1 })
+    return e - 1 - s
+  end)
+end
+
+--- @param namespace integer
+--- @param bufnr integer
+--- @param diagnostics vim.Diagnostic[]
+local function render_virtual_lines(namespace, bufnr, diagnostics)
+  table.sort(diagnostics, function(d1, d2)
+    if d1.lnum == d2.lnum then
+      return d1.col < d2.col
+    else
+      return d1.lnum < d2.lnum
+    end
+  end)
+
+  api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
+
+  if not next(diagnostics) then
+    return
+  end
+
+  -- This loop reads each line, putting them into stacks with some extra data since
+  -- rendering each line requires understanding what is beneath it.
+  local ElementType = { Space = 1, Diagnostic = 2, Overlap = 3, Blank = 4 } ---@enum ElementType
+  local line_stacks = {} ---@type table<integer, {[1]:ElementType, [2]:string|vim.diagnostic.Severity|vim.Diagnostic}[]>
+  local prev_lnum = -1
+  local prev_col = 0
+  for _, diag in ipairs(diagnostics) do
+    if not line_stacks[diag.lnum] then
+      line_stacks[diag.lnum] = {}
+    end
+
+    local stack = line_stacks[diag.lnum]
+
+    if diag.lnum ~= prev_lnum then
+      table.insert(stack, {
+        ElementType.Space,
+        string.rep(' ', distance_between_cols(bufnr, diag.lnum, 0, diag.col)),
+      })
+    elseif diag.col ~= prev_col then
+      table.insert(stack, {
+        ElementType.Space,
+        string.rep(
+          ' ',
+          -- +1 because indexing starts at 0 in one API but at 1 in the other.
+          -- -1 for non-first lines, since the previous column was already drawn.
+          distance_between_cols(bufnr, diag.lnum, prev_col + 1, diag.col) - 1
+        ),
+      })
+    else
+      table.insert(stack, { ElementType.Overlap, diag.severity })
+    end
+
+    if diag.message:find('^%s*$') then
+      table.insert(stack, { ElementType.Blank, diag })
+    else
+      table.insert(stack, { ElementType.Diagnostic, diag })
+    end
+
+    prev_lnum, prev_col = diag.lnum, diag.col
+  end
+
+  local chars = {
+    cross = '┼',
+    horizontal = '─',
+    horizontal_up = '┴',
+    up_right = '└',
+    vertical = '│',
+    vertical_right = '├',
+  }
+
+  for lnum, stack in pairs(line_stacks) do
+    local virt_lines = {}
+
+    -- Note that we read in the order opposite to insertion.
+    for i = #stack, 1, -1 do
+      if stack[i][1] == ElementType.Diagnostic then
+        local diagnostic = stack[i][2]
+        local left = {} ---@type {[1]:string, [2]:string}
+        local overlap = false
+        local multi = false
+
+        -- Iterate the stack for this line to find elements on the left.
+        for j = 1, i - 1 do
+          local type = stack[j][1]
+          local data = stack[j][2]
+          if type == ElementType.Space then
+            if multi then
+              ---@cast data string
+              table.insert(left, {
+                string.rep(chars.horizontal, data:len()),
+                virtual_lines_highlight_map[diagnostic.severity],
+              })
+            else
+              table.insert(left, { data, '' })
+            end
+          elseif type == ElementType.Diagnostic then
+            -- If an overlap follows this line, don't add an extra column.
+            if stack[j + 1][1] ~= ElementType.Overlap then
+              table.insert(left, { chars.vertical, virtual_lines_highlight_map[data.severity] })
+            end
+            overlap = false
+          elseif type == ElementType.Blank then
+            if multi then
+              table.insert(
+                left,
+                { chars.horizontal_up, virtual_lines_highlight_map[data.severity] }
+              )
+            else
+              table.insert(left, { chars.up_right, virtual_lines_highlight_map[data.severity] })
+            end
+            multi = true
+          elseif type == ElementType.Overlap then
+            overlap = true
+          end
+        end
+
+        local center_char ---@type string
+        if overlap and multi then
+          center_char = chars.cross
+        elseif overlap then
+          center_char = chars.vertical_right
+        elseif multi then
+          center_char = chars.horizontal_up
+        else
+          center_char = chars.up_right
+        end
+        local center = {
+          {
+            string.format('%s%s', center_char, string.rep(chars.horizontal, 4) .. ' '),
+            virtual_lines_highlight_map[diagnostic.severity],
+          },
+        }
+
+        -- We can draw on the left side if and only if:
+        -- a. Is the last one stacked this line.
+        -- b. Has enough space on the left.
+        -- c. Is just one line.
+        -- d. Is not an overlap.
+        local msg ---@type string
+        if diagnostic.code then
+          msg = string.format('%s: %s', diagnostic.code, diagnostic.message)
+        else
+          msg = diagnostic.message
+        end
+        for msg_line in msg:gmatch('([^\n]+)') do
+          local vline = {}
+          vim.list_extend(vline, left)
+          vim.list_extend(vline, center)
+          vim.list_extend(vline, { { msg_line, virtual_lines_highlight_map[diagnostic.severity] } })
+
+          table.insert(virt_lines, vline)
+
+          -- Special-case for continuation lines:
+          if overlap then
+            center = {
+              { chars.vertical, virtual_lines_highlight_map[diagnostic.severity] },
+              { '     ', '' },
+            }
+          else
+            center = { { '      ', '' } }
+          end
+        end
+      end
+    end
+
+    api.nvim_buf_set_extmark(bufnr, namespace, lnum, 0, { virt_lines = virt_lines })
+  end
+end
+
+--- @param diagnostics vim.Diagnostic[]
+--- @param namespace integer
+--- @param bufnr integer
+local function render_virtual_lines_at_current_line(diagnostics, namespace, bufnr)
+  local line_diagnostics = {}
+  local lnum = api.nvim_win_get_cursor(0)[1] - 1
+
+  for _, diag in ipairs(diagnostics) do
+    if (lnum == diag.lnum) or (diag.end_lnum and lnum >= diag.lnum and lnum <= diag.end_lnum) then
+      table.insert(line_diagnostics, diag)
+    end
+  end
+
+  render_virtual_lines(namespace, bufnr, line_diagnostics)
+end
+
+M.handlers.virtual_lines = {
+  show = function(namespace, bufnr, diagnostics, opts)
+    vim.validate('namespace', namespace, 'number')
+    vim.validate('bufnr', bufnr, 'number')
+    vim.validate('diagnostics', diagnostics, vim.islist, 'a list of diagnostics')
+    vim.validate('opts', opts, 'table', true)
+
+    bufnr = vim._resolve_bufnr(bufnr)
+    opts = opts or {}
+
+    if not api.nvim_buf_is_loaded(bufnr) then
+      return
+    end
+
+    local ns = M.get_namespace(namespace)
+    if not ns.user_data.virt_lines_ns then
+      ns.user_data.virt_lines_ns =
+        api.nvim_create_namespace(string.format('nvim.%s.diagnostic.virtual_lines', ns.name))
+    end
+    if not M.handlers.virtual_lines._augroup then
+      M.handlers.virtual_lines._augroup =
+        api.nvim_create_augroup('nvim.lsp.diagnostic.virt_lines', { clear = true })
+    end
+
+    api.nvim_clear_autocmds({ group = M.handlers.virtual_lines._augroup })
+
+    if opts.virtual_lines.format then
+      diagnostics = reformat_diagnostics(opts.virtual_lines.format, diagnostics)
+    end
+
+    if opts.virtual_lines.current_line == true then
+      api.nvim_create_autocmd('CursorMoved', {
+        buffer = bufnr,
+        group = M.handlers.virtual_lines._augroup,
+        callback = function()
+          render_virtual_lines_at_current_line(diagnostics, ns.user_data.virt_lines_ns, bufnr)
+        end,
+      })
+      -- Also show diagnostics for the current line before the first CursorMoved event.
+      render_virtual_lines_at_current_line(diagnostics, ns.user_data.virt_lines_ns, bufnr)
+    else
+      render_virtual_lines(ns.user_data.virt_lines_ns, bufnr, diagnostics)
+    end
+
+    save_extmarks(ns.user_data.virt_lines_ns, bufnr)
+  end,
+  hide = function(namespace, bufnr)
+    local ns = M.get_namespace(namespace)
+    if ns.user_data.virt_lines_ns then
+      diagnostic_cache_extmarks[bufnr][ns.user_data.virt_lines_ns] = {}
+      if api.nvim_buf_is_valid(bufnr) then
+        api.nvim_buf_clear_namespace(bufnr, ns.user_data.virt_lines_ns, 0, -1)
+      end
+      api.nvim_clear_autocmds({ group = M.handlers.virtual_lines._augroup })
     end
   end,
 }
@@ -1031,7 +1885,9 @@ M.handlers.virtual_text = {
 --- Exported for backward compatibility with
 --- vim.lsp.diagnostic.get_virtual_text_chunks_for_line(). When that function is eventually removed,
 --- this can be made local.
----@private
+--- @private
+--- @param line_diags table<integer,vim.Diagnostic>
+--- @param opts vim.diagnostic.Opts.VirtualText
 function M._get_virt_text_chunks(line_diags, opts)
   if #line_diags == 0 then
     return nil
@@ -1039,21 +1895,32 @@ function M._get_virt_text_chunks(line_diags, opts)
 
   opts = opts or {}
   local prefix = opts.prefix or '■'
+  local suffix = opts.suffix or ''
   local spacing = opts.spacing or 4
 
   -- Create a little more space between virtual text and contents
   local virt_texts = { { string.rep(' ', spacing) } }
 
-  for i = 1, #line_diags - 1 do
-    table.insert(virt_texts, { prefix, virtual_text_highlight_map[line_diags[i].severity] })
+  for i = 1, #line_diags do
+    local resolved_prefix = prefix
+    if type(prefix) == 'function' then
+      resolved_prefix = prefix(line_diags[i], i, #line_diags) or ''
+    end
+    table.insert(
+      virt_texts,
+      { resolved_prefix, virtual_text_highlight_map[line_diags[i].severity] }
+    )
   end
   local last = line_diags[#line_diags]
 
   -- TODO(tjdevries): Allow different servers to be shown first somehow?
   -- TODO(tjdevries): Display server name associated with these?
   if last.message then
+    if type(suffix) == 'function' then
+      suffix = suffix(last) or ''
+    end
     table.insert(virt_texts, {
-      string.format('%s %s', prefix, last.message:gsub('\r', ''):gsub('\n', '  ')),
+      string.format(' %s%s', last.message:gsub('\r', ''):gsub('\n', '  '), suffix),
       virtual_text_highlight_map[last.severity],
     })
 
@@ -1068,19 +1935,17 @@ end
 --- diagnostics, use |vim.diagnostic.reset()|.
 ---
 --- To hide diagnostics and prevent them from re-displaying, use
---- |vim.diagnostic.disable()|.
+--- |vim.diagnostic.enable()|.
 ---
----@param namespace number|nil Diagnostic namespace. When omitted, hide
----                            diagnostics from all namespaces.
----@param bufnr number|nil Buffer number, or 0 for current buffer. When
----                        omitted, hide diagnostics in all buffers.
+---@param namespace integer? Diagnostic namespace. When omitted, hide
+---                          diagnostics from all namespaces.
+---@param bufnr integer? Buffer number, or 0 for current buffer. When
+---                      omitted, hide diagnostics in all buffers.
 function M.hide(namespace, bufnr)
-  vim.validate({
-    namespace = { namespace, 'n', true },
-    bufnr = { bufnr, 'n', true },
-  })
+  vim.validate('namespace', namespace, 'number', true)
+  vim.validate('bufnr', bufnr, 'number', true)
 
-  local buffers = bufnr and { get_bufnr(bufnr) } or vim.tbl_keys(diagnostic_cache)
+  local buffers = bufnr and { vim._resolve_bufnr(bufnr) } or vim.tbl_keys(diagnostic_cache)
   for _, iter_bufnr in ipairs(buffers) do
     local namespaces = namespace and { namespace } or vim.tbl_keys(diagnostic_cache[iter_bufnr])
     for _, iter_namespace in ipairs(namespaces) do
@@ -1093,32 +1958,52 @@ function M.hide(namespace, bufnr)
   end
 end
 
+--- Check whether diagnostics are enabled.
+---
+--- @param filter vim.diagnostic.Filter?
+--- @return boolean
+--- @since 12
+function M.is_enabled(filter)
+  filter = filter or {}
+  if filter.ns_id and M.get_namespace(filter.ns_id).disabled then
+    return false
+  elseif filter.bufnr == nil then
+    -- See enable() logic.
+    return vim.tbl_isempty(diagnostic_disabled) and not diagnostic_disabled[1]
+  end
+
+  local bufnr = vim._resolve_bufnr(filter.bufnr)
+  if type(diagnostic_disabled[bufnr]) == 'table' then
+    return not diagnostic_disabled[bufnr][filter.ns_id]
+  end
+
+  return diagnostic_disabled[bufnr] == nil
+end
+
+--- @deprecated use `vim.diagnostic.is_enabled()`
+function M.is_disabled(bufnr, namespace)
+  vim.deprecate('vim.diagnostic.is_disabled()', 'vim.diagnostic.is_enabled()', '0.12')
+  return not M.is_enabled { bufnr = bufnr or 0, ns_id = namespace }
+end
+
 --- Display diagnostics for the given namespace and buffer.
 ---
----@param namespace number|nil Diagnostic namespace. When omitted, show
----                            diagnostics from all namespaces.
----@param bufnr number|nil Buffer number, or 0 for current buffer. When omitted, show
----                        diagnostics in all buffers.
----@param diagnostics table|nil The diagnostics to display. When omitted, use the
+---@param namespace integer? Diagnostic namespace. When omitted, show
+---                          diagnostics from all namespaces.
+---@param bufnr integer? Buffer number, or 0 for current buffer. When omitted, show
+---                      diagnostics in all buffers.
+---@param diagnostics vim.Diagnostic[]? The diagnostics to display. When omitted, use the
 ---                             saved diagnostics for the given namespace and
 ---                             buffer. This can be used to display a list of diagnostics
 ---                             without saving them or to display only a subset of
 ---                             diagnostics. May not be used when {namespace}
 ---                             or {bufnr} is nil.
----@param opts table|nil Display options. See |vim.diagnostic.config()|.
+---@param opts? vim.diagnostic.Opts Display options.
 function M.show(namespace, bufnr, diagnostics, opts)
-  vim.validate({
-    namespace = { namespace, 'n', true },
-    bufnr = { bufnr, 'n', true },
-    diagnostics = {
-      diagnostics,
-      function(v)
-        return v == nil or vim.tbl_islist(v)
-      end,
-      'a list of diagnostics',
-    },
-    opts = { opts, 't', true },
-  })
+  vim.validate('namespace', namespace, 'number', true)
+  vim.validate('bufnr', bufnr, 'number', true)
+  vim.validate('diagnostics', diagnostics, vim.islist, true, 'a list of diagnostics')
+  vim.validate('opts', opts, 'table', true)
 
   if not bufnr or not namespace then
     assert(not diagnostics, 'Cannot show diagnostics without a buffer and namespace')
@@ -1128,7 +2013,7 @@ function M.show(namespace, bufnr, diagnostics, opts)
       end
     else
       -- namespace is nil
-      bufnr = get_bufnr(bufnr)
+      bufnr = vim._resolve_bufnr(bufnr)
       for iter_namespace in pairs(diagnostic_cache[bufnr]) do
         M.show(iter_namespace, bufnr, nil, opts)
       end
@@ -1136,7 +2021,7 @@ function M.show(namespace, bufnr, diagnostics, opts)
     return
   end
 
-  if is_disabled(namespace, bufnr) then
+  if not M.is_enabled { bufnr = bufnr or 0, ns_id = namespace } then
     return
   end
 
@@ -1144,24 +2029,24 @@ function M.show(namespace, bufnr, diagnostics, opts)
 
   diagnostics = diagnostics or get_diagnostics(bufnr, { namespace = namespace }, true)
 
-  if not diagnostics or vim.tbl_isempty(diagnostics) then
+  if vim.tbl_isempty(diagnostics) then
     return
   end
 
-  opts = get_resolved_options(opts, namespace, bufnr)
+  local opts_res = get_resolved_options(opts, namespace, bufnr)
 
-  if opts.update_in_insert then
+  if opts_res.update_in_insert then
     clear_scheduled_display(namespace, bufnr)
   else
-    local mode = vim.api.nvim_get_mode()
+    local mode = api.nvim_get_mode()
     if string.sub(mode.mode, 1, 1) == 'i' then
-      schedule_display(namespace, bufnr, opts)
+      schedule_display(namespace, bufnr, opts_res)
       return
     end
   end
 
-  if vim.F.if_nil(opts.severity_sort, false) then
-    if type(opts.severity_sort) == 'table' and opts.severity_sort.reverse then
+  if if_nil(opts_res.severity_sort, false) then
+    if type(opts_res.severity_sort) == 'table' and opts_res.severity_sort.reverse then
       table.sort(diagnostics, function(a, b)
         return a.severity < b.severity
       end)
@@ -1173,68 +2058,30 @@ function M.show(namespace, bufnr, diagnostics, opts)
   end
 
   for handler_name, handler in pairs(M.handlers) do
-    if handler.show and opts[handler_name] then
-      handler.show(namespace, bufnr, diagnostics, opts)
+    if handler.show and opts_res[handler_name] then
+      local filtered = filter_by_severity(opts_res[handler_name].severity, diagnostics)
+      handler.show(namespace, bufnr, filtered, opts_res)
     end
   end
 end
 
 --- Show diagnostics in a floating window.
 ---
----@param opts table|nil Configuration table with the same keys as
----            |vim.lsp.util.open_floating_preview()| in addition to the following:
----            - bufnr: (number) Buffer number to show diagnostics from.
----                     Defaults to the current buffer.
----            - namespace: (number) Limit diagnostics to the given namespace
----            - scope: (string, default "line") Show diagnostics from the whole buffer ("buffer"),
----                     the current cursor line ("line"), or the current cursor position ("cursor").
----                     Shorthand versions are also accepted ("c" for "cursor", "l" for "line", "b"
----                     for "buffer").
----            - pos: (number or table) If {scope} is "line" or "cursor", use this position rather
----                   than the cursor position. If a number, interpreted as a line number;
----                   otherwise, a (row, col) tuple.
----            - severity_sort: (default false) Sort diagnostics by severity. Overrides the setting
----                             from |vim.diagnostic.config()|.
----            - severity: See |diagnostic-severity|. Overrides the setting from
----                        |vim.diagnostic.config()|.
----            - header: (string or table) String to use as the header for the floating window. If a
----                      table, it is interpreted as a [text, hl_group] tuple. Overrides the setting
----                      from |vim.diagnostic.config()|.
----            - source: (boolean or string) Include the diagnostic source in the message.
----                      Use "if_many" to only show sources if there is more than one source of
----                      diagnostics in the buffer. Otherwise, any truthy value means to always show
----                      the diagnostic source. Overrides the setting from
----                      |vim.diagnostic.config()|.
----            - format: (function) A function that takes a diagnostic as input and returns a
----                      string. The return value is the text used to display the diagnostic.
----                      Overrides the setting from |vim.diagnostic.config()|.
----            - prefix: (function, string, or table) Prefix each diagnostic in the floating
----                      window. If a function, it must have the signature (diagnostic, i,
----                      total) -> (string, string), where {i} is the index of the diagnostic
----                      being evaluated and {total} is the total number of diagnostics
----                      displayed in the window. The function should return a string which
----                      is prepended to each diagnostic in the window as well as an
----                      (optional) highlight group which will be used to highlight the
----                      prefix. If {prefix} is a table, it is interpreted as a [text,
----                      hl_group] tuple as in |nvim_echo()|; otherwise, if {prefix} is a
----                      string, it is prepended to each diagnostic in the window with no
----                      highlight.
----                      Overrides the setting from |vim.diagnostic.config()|.
----@return tuple ({float_bufnr}, {win_id})
+---@param opts vim.diagnostic.Opts.Float?
+---@return integer? float_bufnr
+---@return integer? winid
 function M.open_float(opts, ...)
   -- Support old (bufnr, opts) signature
-  local bufnr
+  local bufnr --- @type integer?
   if opts == nil or type(opts) == 'number' then
     bufnr = opts
-    opts = ...
+    opts = ... --- @type vim.diagnostic.Opts.Float
   else
-    vim.validate({
-      opts = { opts, 't', true },
-    })
+    vim.validate('opts', opts, 'table', true)
   end
 
   opts = opts or {}
-  bufnr = get_bufnr(bufnr or opts.bufnr)
+  bufnr = vim._resolve_bufnr(bufnr or opts.bufnr)
 
   do
     -- Resolve options with user settings from vim.diagnostic.config
@@ -1248,16 +2095,17 @@ function M.open_float(opts, ...)
   end
 
   local scope = ({ l = 'line', c = 'cursor', b = 'buffer' })[opts.scope] or opts.scope or 'line'
-  local lnum, col
+  local lnum, col --- @type integer, integer
+  local opts_pos = opts.pos
   if scope == 'line' or scope == 'cursor' then
-    if not opts.pos then
-      local pos = vim.api.nvim_win_get_cursor(0)
+    if not opts_pos then
+      local pos = api.nvim_win_get_cursor(0)
       lnum = pos[1] - 1
       col = pos[2]
-    elseif type(opts.pos) == 'number' then
-      lnum = opts.pos
-    elseif type(opts.pos) == 'table' then
-      lnum, col = unpack(opts.pos)
+    elseif type(opts_pos) == 'number' then
+      lnum = opts_pos
+    elseif type(opts_pos) == 'table' then
+      lnum, col = opts_pos[1], opts_pos[2]
     else
       error("Invalid value for option 'pos'")
     end
@@ -1265,19 +2113,24 @@ function M.open_float(opts, ...)
     error("Invalid value for option 'scope'")
   end
 
-  local diagnostics = get_diagnostics(bufnr, opts, true)
+  local diagnostics = get_diagnostics(bufnr, opts --[[@as vim.diagnostic.GetOpts]], true)
 
   if scope == 'line' then
+    --- @param d vim.Diagnostic
     diagnostics = vim.tbl_filter(function(d)
-      return d.lnum == lnum
+      return lnum >= d.lnum
+        and lnum <= d.end_lnum
+        and (d.lnum == d.end_lnum or lnum ~= d.end_lnum or d.end_col ~= 0)
     end, diagnostics)
   elseif scope == 'cursor' then
-    -- LSP servers can send diagnostics with `end_col` past the length of the line
-    local line_length = #vim.api.nvim_buf_get_lines(bufnr, lnum, lnum + 1, true)[1]
+    -- If `col` is past the end of the line, show if the cursor is on the last char in the line
+    local line_length = #api.nvim_buf_get_lines(bufnr, lnum, lnum + 1, true)[1]
+    --- @param d vim.Diagnostic
     diagnostics = vim.tbl_filter(function(d)
-      return d.lnum == lnum
-        and math.min(d.col, line_length - 1) <= col
-        and (d.end_col >= col or d.end_lnum > lnum)
+      return lnum >= d.lnum
+        and lnum <= d.end_lnum
+        and (lnum ~= d.lnum or col >= math.min(d.col, line_length - 1))
+        and ((d.lnum == d.end_lnum and d.col == d.end_col) or lnum ~= d.end_lnum or col < d.end_col)
     end, diagnostics)
   end
 
@@ -1285,7 +2138,7 @@ function M.open_float(opts, ...)
     return
   end
 
-  local severity_sort = vim.F.if_nil(opts.severity_sort, global_diagnostic_options.severity_sort)
+  local severity_sort = if_nil(opts.severity_sort, global_diagnostic_options.severity_sort)
   if severity_sort then
     if type(severity_sort) == 'table' and severity_sort.reverse then
       table.sort(diagnostics, function(a, b)
@@ -1298,28 +2151,20 @@ function M.open_float(opts, ...)
     end
   end
 
-  local lines = {}
-  local highlights = {}
+  local lines = {} --- @type string[]
+  local highlights = {} --- @type table[]
   local header = if_nil(opts.header, 'Diagnostics:')
   if header then
-    vim.validate({
-      header = {
-        header,
-        function(v)
-          return type(v) == 'string' or type(v) == 'table'
-        end,
-        "'string' or 'table'",
-      },
-    })
+    vim.validate('header', header, { 'string', 'table' }, "'string' or 'table'")
     if type(header) == 'table' then
       -- Don't insert any lines for an empty string
       if string.len(if_nil(header[1], '')) > 0 then
         table.insert(lines, header[1])
-        table.insert(highlights, { 0, header[2] or 'Bold' })
+        table.insert(highlights, { hlname = header[2] or 'Bold' })
       end
     elseif #header > 0 then
       table.insert(lines, header)
-      table.insert(highlights, { 0, 'Bold' })
+      table.insert(highlights, { hlname = 'Bold' })
     end
   end
 
@@ -1336,17 +2181,14 @@ function M.open_float(opts, ...)
       return string.format('%d. ', i)
     end)
 
-  local prefix, prefix_hl_group
+  local prefix, prefix_hl_group --- @type string?, string?
   if prefix_opt then
-    vim.validate({
-      prefix = {
-        prefix_opt,
-        function(v)
-          return type(v) == 'string' or type(v) == 'table' or type(v) == 'function'
-        end,
-        "'string' or 'table' or 'function'",
-      },
-    })
+    vim.validate(
+      'prefix',
+      prefix_opt,
+      { 'string', 'table', 'function' },
+      "'string' or 'table' or 'function'"
+    )
     if type(prefix_opt) == 'string' then
       prefix, prefix_hl_group = prefix_opt, 'NormalFloat'
     elseif type(prefix_opt) == 'table' then
@@ -1354,18 +2196,54 @@ function M.open_float(opts, ...)
     end
   end
 
-  for i, diagnostic in ipairs(diagnostics) do
-    if prefix_opt and type(prefix_opt) == 'function' then
-      prefix, prefix_hl_group = prefix_opt(diagnostic, i, #diagnostics)
-      prefix, prefix_hl_group = prefix or '', prefix_hl_group or 'NormalFloat'
+  local suffix_opt = if_nil(opts.suffix, function(diagnostic)
+    return diagnostic.code and string.format(' [%s]', diagnostic.code) or ''
+  end)
+
+  local suffix, suffix_hl_group --- @type string?, string?
+  if suffix_opt then
+    vim.validate(
+      'suffix',
+      suffix_opt,
+      { 'string', 'table', 'function' },
+      "'string' or 'table' or 'function'"
+    )
+    if type(suffix_opt) == 'string' then
+      suffix, suffix_hl_group = suffix_opt, 'NormalFloat'
+    elseif type(suffix_opt) == 'table' then
+      suffix, suffix_hl_group = suffix_opt[1] or '', suffix_opt[2] or 'NormalFloat'
     end
-    local hiname = floating_highlight_map[diagnostic.severity]
+  end
+
+  for i, diagnostic in ipairs(diagnostics) do
+    if type(prefix_opt) == 'function' then
+      --- @cast prefix_opt fun(...): string?, string?
+      local prefix0, prefix_hl_group0 = prefix_opt(diagnostic, i, #diagnostics)
+      prefix, prefix_hl_group = prefix0 or '', prefix_hl_group0 or 'NormalFloat'
+    end
+    if type(suffix_opt) == 'function' then
+      --- @cast suffix_opt fun(...): string?, string?
+      local suffix0, suffix_hl_group0 = suffix_opt(diagnostic, i, #diagnostics)
+      suffix, suffix_hl_group = suffix0 or '', suffix_hl_group0 or 'NormalFloat'
+    end
+    --- @type string?
+    local hiname = floating_highlight_map[assert(diagnostic.severity)]
     local message_lines = vim.split(diagnostic.message, '\n')
-    table.insert(lines, prefix .. message_lines[1])
-    table.insert(highlights, { #prefix, hiname, prefix_hl_group })
-    for j = 2, #message_lines do
-      table.insert(lines, string.rep(' ', #prefix) .. message_lines[j])
-      table.insert(highlights, { 0, hiname })
+    for j = 1, #message_lines do
+      local pre = j == 1 and prefix or string.rep(' ', #prefix)
+      local suf = j == #message_lines and suffix or ''
+      table.insert(lines, pre .. message_lines[j] .. suf)
+      table.insert(highlights, {
+        hlname = hiname,
+        prefix = {
+          length = j == 1 and #prefix or 0,
+          hlname = prefix_hl_group,
+        },
+        suffix = {
+          length = j == #message_lines and #suffix or 0,
+          hlname = suffix_hl_group,
+        },
+      })
     end
   end
 
@@ -1373,13 +2251,25 @@ function M.open_float(opts, ...)
   if not opts.focus_id then
     opts.focus_id = scope
   end
-  local float_bufnr, winnr = require('vim.lsp.util').open_floating_preview(lines, 'plaintext', opts)
-  for i, hi in ipairs(highlights) do
-    local prefixlen, hiname, prefix_hiname = unpack(hi)
-    if prefix_hiname then
-      vim.api.nvim_buf_add_highlight(float_bufnr, -1, prefix_hiname, i - 1, 0, prefixlen)
+
+  --- @diagnostic disable-next-line: param-type-mismatch
+  local float_bufnr, winnr = vim.lsp.util.open_floating_preview(lines, 'plaintext', opts)
+  vim.bo[float_bufnr].path = vim.bo[bufnr].path
+
+  --- @diagnostic disable-next-line: deprecated
+  local add_highlight = api.nvim_buf_add_highlight
+
+  for i, hl in ipairs(highlights) do
+    local line = lines[i]
+    local prefix_len = hl.prefix and hl.prefix.length or 0
+    local suffix_len = hl.suffix and hl.suffix.length or 0
+    if prefix_len > 0 then
+      add_highlight(float_bufnr, -1, hl.prefix.hlname, i - 1, 0, prefix_len)
     end
-    vim.api.nvim_buf_add_highlight(float_bufnr, -1, hiname, i - 1, prefixlen, -1)
+    add_highlight(float_bufnr, -1, hl.hlname, i - 1, prefix_len, #line - suffix_len)
+    if suffix_len > 0 then
+      add_highlight(float_bufnr, -1, hl.suffix.hlname, i - 1, #line - suffix_len, -1)
+    end
   end
 
   return float_bufnr, winnr
@@ -1392,17 +2282,15 @@ end
 --- simply remove diagnostic decorations in a way that they can be
 --- re-displayed, use |vim.diagnostic.hide()|.
 ---
----@param namespace number|nil Diagnostic namespace. When omitted, remove
----                            diagnostics from all namespaces.
----@param bufnr number|nil Remove diagnostics for the given buffer. When omitted,
----             diagnostics are removed for all buffers.
+---@param namespace integer? Diagnostic namespace. When omitted, remove
+---                          diagnostics from all namespaces.
+---@param bufnr integer? Remove diagnostics for the given buffer. When omitted,
+---                     diagnostics are removed for all buffers.
 function M.reset(namespace, bufnr)
-  vim.validate({
-    namespace = { namespace, 'n', true },
-    bufnr = { bufnr, 'n', true },
-  })
+  vim.validate('namespace', namespace, 'number', true)
+  vim.validate('bufnr', bufnr, 'number', true)
 
-  local buffers = bufnr and { get_bufnr(bufnr) } or vim.tbl_keys(diagnostic_cache)
+  local buffers = bufnr and { vim._resolve_bufnr(bufnr) } or vim.tbl_keys(diagnostic_cache)
   for _, iter_bufnr in ipairs(buffers) do
     local namespaces = namespace and { namespace } or vim.tbl_keys(diagnostic_cache[iter_bufnr])
     for _, iter_namespace in ipairs(namespaces) do
@@ -1410,146 +2298,202 @@ function M.reset(namespace, bufnr)
       M.hide(iter_namespace, iter_bufnr)
     end
 
-    vim.api.nvim_exec_autocmds('DiagnosticChanged', {
-      modeline = false,
-      buffer = iter_bufnr,
-      data = { diagnostics = {} },
-    })
+    if api.nvim_buf_is_valid(iter_bufnr) then
+      api.nvim_exec_autocmds('DiagnosticChanged', {
+        modeline = false,
+        buffer = iter_bufnr,
+        data = { diagnostics = {} },
+      })
+    else
+      diagnostic_cache[iter_bufnr] = nil
+    end
   end
 end
 
+--- Configuration table with the following keys:
+--- @class vim.diagnostic.setqflist.Opts
+--- @inlinedoc
+---
+--- Only add diagnostics from the given namespace.
+--- @field namespace? integer
+---
+--- Open quickfix list after setting.
+--- (default: `true`)
+--- @field open? boolean
+---
+--- Title of quickfix list. Defaults to "Diagnostics". If there's already a quickfix list with this
+--- title, it's updated. If not, a new quickfix list is created.
+--- @field title? string
+---
+--- See |diagnostic-severity|.
+--- @field severity? vim.diagnostic.SeverityFilter
+
 --- Add all diagnostics to the quickfix list.
 ---
----@param opts table|nil Configuration table with the following keys:
----         - namespace: (number) Only add diagnostics from the given namespace.
----         - open: (boolean, default true) Open quickfix list after setting.
----         - title: (string) Title of quickfix list. Defaults to "Diagnostics".
----         - severity: See |diagnostic-severity|.
+---@param opts? vim.diagnostic.setqflist.Opts
 function M.setqflist(opts)
   set_list(false, opts)
 end
 
+---Configuration table with the following keys:
+--- @class vim.diagnostic.setloclist.Opts
+--- @inlinedoc
+---
+--- Only add diagnostics from the given namespace.
+--- @field namespace? integer
+---
+--- Window number to set location list for.
+--- (default: `0`)
+--- @field winnr? integer
+---
+--- Open the location list after setting.
+--- (default: `true`)
+--- @field open? boolean
+---
+--- Title of the location list. Defaults to "Diagnostics".
+--- @field title? string
+---
+--- See |diagnostic-severity|.
+--- @field severity? vim.diagnostic.SeverityFilter
+
 --- Add buffer diagnostics to the location list.
 ---
----@param opts table|nil Configuration table with the following keys:
----         - namespace: (number) Only add diagnostics from the given namespace.
----         - winnr: (number, default 0) Window number to set location list for.
----         - open: (boolean, default true) Open the location list after setting.
----         - title: (string) Title of the location list. Defaults to "Diagnostics".
----         - severity: See |diagnostic-severity|.
+---@param opts? vim.diagnostic.setloclist.Opts
 function M.setloclist(opts)
   set_list(true, opts)
 end
 
---- Disable diagnostics in the given buffer.
----
----@param bufnr number|nil Buffer number, or 0 for current buffer. When
----                        omitted, disable diagnostics in all buffers.
----@param namespace number|nil Only disable diagnostics for the given namespace.
+--- @deprecated use `vim.diagnostic.enable(false, …)`
 function M.disable(bufnr, namespace)
-  vim.validate({ bufnr = { bufnr, 'n', true }, namespace = { namespace, 'n', true } })
-  if bufnr == nil then
-    if namespace == nil then
-      -- Disable everything (including as yet non-existing buffers and
-      -- namespaces) by setting diagnostic_disabled to an empty table and set
-      -- its metatable to always return true. This metatable is removed
-      -- in enable()
-      diagnostic_disabled = setmetatable({}, {
-        __index = function()
-          return true
-        end,
-      })
-    else
-      local ns = M.get_namespace(namespace)
-      ns.disabled = true
-    end
-  else
-    bufnr = get_bufnr(bufnr)
-    if namespace == nil then
-      diagnostic_disabled[bufnr] = true
-    else
-      if type(diagnostic_disabled[bufnr]) ~= 'table' then
-        diagnostic_disabled[bufnr] = {}
-      end
-      diagnostic_disabled[bufnr][namespace] = true
-    end
-  end
-
-  M.hide(namespace, bufnr)
+  vim.deprecate('vim.diagnostic.disable()', 'vim.diagnostic.enable(false, …)', '0.12')
+  M.enable(false, { bufnr = bufnr, ns_id = namespace })
 end
 
---- Enable diagnostics in the given buffer.
+--- Enables or disables diagnostics.
 ---
----@param bufnr number|nil Buffer number, or 0 for current buffer. When
----                        omitted, enable diagnostics in all buffers.
----@param namespace number|nil Only enable diagnostics for the given namespace.
-function M.enable(bufnr, namespace)
-  vim.validate({ bufnr = { bufnr, 'n', true }, namespace = { namespace, 'n', true } })
-  if bufnr == nil then
-    if namespace == nil then
-      -- Enable everything by setting diagnostic_disabled to an empty table
-      diagnostic_disabled = {}
+--- To "toggle", pass the inverse of `is_enabled()`:
+---
+--- ```lua
+--- vim.diagnostic.enable(not vim.diagnostic.is_enabled())
+--- ```
+---
+--- @param enable (boolean|nil) true/nil to enable, false to disable
+--- @param filter vim.diagnostic.Filter?
+function M.enable(enable, filter)
+  -- Deprecated signature. Drop this in 0.12
+  local legacy = (enable or filter)
+    and vim.tbl_contains({ 'number', 'nil' }, type(enable))
+    and vim.tbl_contains({ 'number', 'nil' }, type(filter))
+
+  if legacy then
+    vim.deprecate(
+      'vim.diagnostic.enable(buf:number, namespace:number)',
+      'vim.diagnostic.enable(enable:boolean, filter:table)',
+      '0.12'
+    )
+
+    vim.validate('enable', enable, 'number', true) -- Legacy `bufnr` arg.
+    vim.validate('filter', filter, 'number', true) -- Legacy `namespace` arg.
+
+    local ns_id = type(filter) == 'number' and filter or nil
+    filter = {}
+    filter.ns_id = ns_id
+    filter.bufnr = type(enable) == 'number' and enable or nil
+    enable = true
+  else
+    filter = filter or {}
+    vim.validate('enable', enable, 'boolean', true)
+    vim.validate('filter', filter, 'table', true)
+  end
+
+  enable = enable == nil and true or enable
+  local bufnr = filter.bufnr
+  local ns_id = filter.ns_id
+
+  if not bufnr then
+    if not ns_id then
+      diagnostic_disabled = (
+        enable
+          -- Enable everything by setting diagnostic_disabled to an empty table.
+          and {}
+        -- Disable everything (including as yet non-existing buffers and namespaces) by setting
+        -- diagnostic_disabled to an empty table and set its metatable to always return true.
+        or setmetatable({}, {
+          __index = function()
+            return true
+          end,
+        })
+      )
     else
-      local ns = M.get_namespace(namespace)
-      ns.disabled = false
+      local ns = M.get_namespace(ns_id)
+      ns.disabled = not enable
     end
   else
-    bufnr = get_bufnr(bufnr)
-    if namespace == nil then
-      diagnostic_disabled[bufnr] = nil
+    bufnr = vim._resolve_bufnr(bufnr)
+    if not ns_id then
+      diagnostic_disabled[bufnr] = (not enable) and true or nil
     else
       if type(diagnostic_disabled[bufnr]) ~= 'table' then
-        return
+        if enable then
+          return
+        else
+          diagnostic_disabled[bufnr] = {}
+        end
       end
-      diagnostic_disabled[bufnr][namespace] = nil
+      diagnostic_disabled[bufnr][ns_id] = (not enable) and true or nil
     end
   end
 
-  M.show(namespace, bufnr)
+  if enable then
+    M.show(ns_id, bufnr)
+  else
+    M.hide(ns_id, bufnr)
+  end
 end
 
 --- Parse a diagnostic from a string.
 ---
 --- For example, consider a line of output from a linter:
---- <pre>
---- WARNING filename:27:3: Variable 'foo' does not exist
---- </pre>
 ---
---- This can be parsed into a diagnostic |diagnostic-structure|
---- with:
---- <pre>
+--- ```
+--- WARNING filename:27:3: Variable 'foo' does not exist
+--- ```
+---
+--- This can be parsed into |vim.Diagnostic| structure with:
+---
+--- ```lua
 --- local s = "WARNING filename:27:3: Variable 'foo' does not exist"
 --- local pattern = "^(%w+) %w+:(%d+):(%d+): (.+)$"
 --- local groups = { "severity", "lnum", "col", "message" }
 --- vim.diagnostic.match(s, pattern, groups, { WARNING = vim.diagnostic.WARN })
---- </pre>
+--- ```
 ---
 ---@param str string String to parse diagnostics from.
 ---@param pat string Lua pattern with capture groups.
----@param groups table List of fields in a |diagnostic-structure| to
+---@param groups string[] List of fields in a |vim.Diagnostic| structure to
 ---                    associate with captures from {pat}.
 ---@param severity_map table A table mapping the severity field from {groups}
 ---                          with an item from |vim.diagnostic.severity|.
----@param defaults table|nil Table of default values for any fields not listed in {groups}.
----                          When omitted, numeric values default to 0 and "severity" defaults to
----                          ERROR.
----@return diagnostic |diagnostic-structure| or `nil` if {pat} fails to match {str}.
+---@param defaults table? Table of default values for any fields not listed in {groups}.
+---                       When omitted, numeric values default to 0 and "severity" defaults to
+---                       ERROR.
+---@return vim.Diagnostic?: |vim.Diagnostic| structure or `nil` if {pat} fails to match {str}.
 function M.match(str, pat, groups, severity_map, defaults)
-  vim.validate({
-    str = { str, 's' },
-    pat = { pat, 's' },
-    groups = { groups, 't' },
-    severity_map = { severity_map, 't', true },
-    defaults = { defaults, 't', true },
-  })
+  vim.validate('str', str, 'string')
+  vim.validate('pat', pat, 'string')
+  vim.validate('groups', groups, 'table')
+  vim.validate('severity_map', severity_map, 'table', true)
+  vim.validate('defaults', defaults, 'table', true)
 
+  --- @type table<string,vim.diagnostic.Severity>
   severity_map = severity_map or M.severity
 
-  local diagnostic = {}
-  local matches = { string.match(str, pat) }
+  local matches = { str:match(pat) } --- @type any[]
   if vim.tbl_isempty(matches) then
     return
   end
+
+  local diagnostic = {} --- @type type<string,any>
 
   for i, match in ipairs(matches) do
     local field = groups[i]
@@ -1558,10 +2502,10 @@ function M.match(str, pat, groups, severity_map, defaults)
     elseif field == 'lnum' or field == 'end_lnum' or field == 'col' or field == 'end_col' then
       match = assert(tonumber(match)) - 1
     end
-    diagnostic[field] = match
+    diagnostic[field] = match --- @type any
   end
 
-  diagnostic = vim.tbl_extend('keep', diagnostic, defaults or {})
+  diagnostic = vim.tbl_extend('keep', diagnostic, defaults or {}) --- @type vim.Diagnostic
   diagnostic.severity = diagnostic.severity or M.severity.ERROR
   diagnostic.col = diagnostic.col or 0
   diagnostic.end_lnum = diagnostic.end_lnum or diagnostic.lnum
@@ -1579,18 +2523,12 @@ local errlist_type_map = {
 --- Convert a list of diagnostics to a list of quickfix items that can be
 --- passed to |setqflist()| or |setloclist()|.
 ---
----@param diagnostics table List of diagnostics |diagnostic-structure|.
----@return array of quickfix list items |setqflist-what|
+---@param diagnostics vim.Diagnostic[]
+---@return table[] : Quickfix list items |setqflist-what|
 function M.toqflist(diagnostics)
-  vim.validate({
-    diagnostics = {
-      diagnostics,
-      vim.tbl_islist,
-      'a list of diagnostics',
-    },
-  })
+  vim.validate('diagnostics', diagnostics, vim.islist, 'a list of diagnostics')
 
-  local list = {}
+  local list = {} --- @type table[]
   for _, v in ipairs(diagnostics) do
     local item = {
       bufnr = v.bufnr,
@@ -1605,7 +2543,11 @@ function M.toqflist(diagnostics)
   end
   table.sort(list, function(a, b)
     if a.bufnr == b.bufnr then
-      return a.lnum < b.lnum
+      if a.lnum == b.lnum then
+        return a.col < b.col
+      else
+        return a.lnum < b.lnum
+      end
     else
       return a.bufnr < b.bufnr
     end
@@ -1615,19 +2557,12 @@ end
 
 --- Convert a list of quickfix items to a list of diagnostics.
 ---
----@param list table A list of quickfix items from |getqflist()| or
----            |getloclist()|.
----@return array of diagnostics |diagnostic-structure|
+---@param list table[] List of quickfix items from |getqflist()| or |getloclist()|.
+---@return vim.Diagnostic[]
 function M.fromqflist(list)
-  vim.validate({
-    list = {
-      list,
-      vim.tbl_islist,
-      'a list of quickfix items',
-    },
-  })
+  vim.validate('list', list, 'table')
 
-  local diagnostics = {}
+  local diagnostics = {} --- @type vim.Diagnostic[]
   for _, item in ipairs(list) do
     if item.valid == 1 then
       local lnum = math.max(0, item.lnum - 1)
@@ -1635,7 +2570,7 @@ function M.fromqflist(list)
       local end_lnum = item.end_lnum > 0 and (item.end_lnum - 1) or lnum
       local end_col = item.end_col > 0 and (item.end_col - 1) or col
       local severity = item.type ~= '' and M.severity[item.type] or M.severity.ERROR
-      table.insert(diagnostics, {
+      diagnostics[#diagnostics + 1] = {
         bufnr = item.bufnr,
         lnum = lnum,
         col = col,
@@ -1643,7 +2578,7 @@ function M.fromqflist(list)
         end_col = end_col,
         severity = severity,
         message = item.text,
-      })
+      }
     end
   end
   return diagnostics

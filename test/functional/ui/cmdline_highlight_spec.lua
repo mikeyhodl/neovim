@@ -1,15 +1,16 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
 
-local eq = helpers.eq
-local feed = helpers.feed
-local clear = helpers.clear
-local meths = helpers.meths
-local funcs = helpers.funcs
-local source = helpers.source
-local dedent = helpers.dedent
-local command = helpers.command
-local curbufmeths = helpers.curbufmeths
+local eq = t.eq
+local feed = n.feed
+local clear = n.clear
+local api = n.api
+local fn = n.fn
+local source = n.source
+local exec_capture = n.exec_capture
+local dedent = t.dedent
+local command = n.command
 
 local screen
 
@@ -23,7 +24,6 @@ end
 before_each(function()
   clear()
   screen = Screen.new(40, 8)
-  screen:attach()
   source([[
     highlight RBP1 guibg=Red
     highlight RBP2 guibg=Yellow
@@ -61,7 +61,7 @@ before_each(function()
       endwhile
       return ret
     endfunction
-    function SplittedMultibyteStart(cmdline)
+    function SplitMultibyteStart(cmdline)
       let ret = []
       let i = 0
       while i < len(a:cmdline)
@@ -77,7 +77,7 @@ before_each(function()
       endwhile
       return ret
     endfunction
-    function SplittedMultibyteEnd(cmdline)
+    function SplitMultibyteEnd(cmdline)
       let ret = []
       let i = 0
       while i < len(a:cmdline)
@@ -137,36 +137,35 @@ before_each(function()
     endfunction
   ]])
   screen:set_default_attr_ids({
-    RBP1={background = Screen.colors.Red},
-    RBP2={background = Screen.colors.Yellow},
-    RBP3={background = Screen.colors.Green},
-    RBP4={background = Screen.colors.Blue},
-    EOB={bold = true, foreground = Screen.colors.Blue1},
-    ERR={foreground = Screen.colors.Grey100, background = Screen.colors.Red},
-    SK={foreground = Screen.colors.Blue},
-    PE={bold = true, foreground = Screen.colors.SeaGreen4},
-    NUM={foreground = Screen.colors.Blue2},
-    NPAR={foreground = Screen.colors.Yellow},
-    SQ={foreground = Screen.colors.Blue3},
-    SB={foreground = Screen.colors.Blue4},
-    E={foreground = Screen.colors.Red, background = Screen.colors.Blue},
-    M={bold = true},
-    MSEP={bold = true, reverse = true};
+    RBP1 = { background = Screen.colors.Red },
+    RBP2 = { background = Screen.colors.Yellow },
+    RBP3 = { background = Screen.colors.Green },
+    RBP4 = { background = Screen.colors.Blue },
+    EOB = { bold = true, foreground = Screen.colors.Blue1 },
+    ERR = { foreground = Screen.colors.Grey100, background = Screen.colors.Red },
+    SK = { foreground = Screen.colors.Blue },
+    PE = { bold = true, foreground = Screen.colors.SeaGreen4 },
+    NUM = { foreground = Screen.colors.Blue2 },
+    NPAR = { foreground = Screen.colors.Yellow },
+    SQ = { foreground = Screen.colors.Blue3 },
+    SB = { foreground = Screen.colors.Blue4 },
+    E = { foreground = Screen.colors.Red, background = Screen.colors.Blue },
+    M = { bold = true },
+    MSEP = { bold = true, reverse = true },
   })
 end)
 
 local function set_color_cb(funcname, callback_return, id)
-  meths.set_var('id', id or '')
-  if id and id ~= '' and funcs.exists('*' .. funcname .. 'N') then
-    command(('let g:Nvim_color_input%s = {cmdline -> %sN(%s, cmdline)}'):format(
-      id, funcname, id))
+  api.nvim_set_var('id', id or '')
+  if id and id ~= '' and fn.exists('*' .. funcname .. 'N') then
+    command(('let g:Nvim_color_input%s = {cmdline -> %sN(%s, cmdline)}'):format(id, funcname, id))
     if callback_return then
-      meths.set_var('callback_return' .. id, callback_return)
+      api.nvim_set_var('callback_return' .. id, callback_return)
     end
   else
-    meths.set_var('Nvim_color_input', funcname)
+    api.nvim_set_var('Nvim_color_input', funcname)
     if callback_return then
-      meths.set_var('callback_return', callback_return)
+      api.nvim_set_var('callback_return', callback_return)
     end
   end
 end
@@ -177,142 +176,94 @@ end
 describe('Command-line coloring', function()
   it('works', function()
     set_color_cb('RainBowParens')
-    meths.set_option('more', false)
+    api.nvim_set_option_value('more', false, {})
     start_prompt()
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :^                                       |
     ]])
     feed('e')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :e^                                      |
     ]])
     feed('cho ')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :echo ^                                  |
     ]])
     feed('(')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :echo {RBP1:(}^                                 |
     ]])
     feed('(')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :echo {RBP1:(}{RBP2:(}^                                |
     ]])
     feed('42')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :echo {RBP1:(}{RBP2:(}42^                              |
     ]])
     feed('))')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :echo {RBP1:(}{RBP2:(}42{RBP2:)}{RBP1:)}^                            |
     ]])
     feed('<BS>')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :echo {RBP1:(}{RBP2:(}42{RBP2:)}^                             |
     ]])
     redraw_input()
-    screen:expect{grid=[[
+    screen:expect {
+      grid = [[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :echo {RBP1:(}{RBP2:(}42{RBP2:)}^                             |
-    ]], reset=true}
+    ]],
+      reset = true,
+    }
   end)
-  for _, func_part in ipairs({'', 'n', 'msg'}) do
+  for _, func_part in ipairs({ '', 'n', 'msg' }) do
     it('disables :echo' .. func_part .. ' messages', function()
       set_color_cb('Echo' .. func_part .. 'ing')
       start_prompt('echo')
       screen:expect([[
                                                 |
-        {EOB:~                                       }|
-        {EOB:~                                       }|
-        {EOB:~                                       }|
-        {EOB:~                                       }|
-        {EOB:~                                       }|
-        {EOB:~                                       }|
+        {EOB:~                                       }|*6
         :echo^                                   |
       ]])
     end)
   end
-  it('does the right thing when hl start appears to split multibyte char',
-  function()
-    set_color_cb('SplittedMultibyteStart')
+  it('does the right thing when hl start appears to split multibyte char', function()
+    set_color_cb('SplitMultibyteStart')
     start_prompt('echo "«')
-    screen:expect{grid=[[
+    screen:expect {
+      grid = [[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*2
       {MSEP:                                        }|
       :echo "                                 |
       {ERR:E5405: Chunk 0 start 7 splits multibyte }|
       {ERR:character}                               |
       :echo "«^                                |
-    ]]}
+    ]],
+    }
     feed('»')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*2
       {MSEP:                                        }|
       :echo "                                 |
       {ERR:E5405: Chunk 0 start 7 splits multibyte }|
@@ -320,14 +271,12 @@ describe('Command-line coloring', function()
       :echo "«»^                               |
     ]])
   end)
-  it('does the right thing when hl end appears to split multibyte char',
-  function()
-    set_color_cb('SplittedMultibyteEnd')
+  it('does the right thing when hl end appears to split multibyte char', function()
+    set_color_cb('SplitMultibyteEnd')
     start_prompt('echo "«')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*2
       {MSEP:                                        }|
       :echo "                                 |
       {ERR:E5406: Chunk 0 end 7 splits multibyte ch}|
@@ -335,17 +284,17 @@ describe('Command-line coloring', function()
       :echo "«^                                |
     ]])
   end)
-  it('does the right thing when errorring', function()
+  it('does the right thing when erroring', function()
     set_color_cb('Echoerring')
     start_prompt('e')
     screen:expect([[
                                               |
       {EOB:~                                       }|
-      {EOB:~                                       }|
       {MSEP:                                        }|
       :                                       |
       {ERR:E5407: Callback has thrown an exception:}|
-      {ERR: Vim(echoerr):HERE}                      |
+      {ERR: function DoPrompt[3]..Echoerring, line }|
+      {ERR:1: Vim(echoerr):HERE}                    |
       :e^                                      |
     ]])
   end)
@@ -354,45 +303,30 @@ describe('Command-line coloring', function()
     start_prompt('e')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :e^                                      |
     ]])
-    eq('', meths.exec('messages', true))
+    eq('', exec_capture('messages'))
   end)
   it('silences :echon', function()
     set_color_cb('Echoning')
     start_prompt('e')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :e^                                      |
     ]])
-    eq('', meths.exec('messages', true))
+    eq('', exec_capture('messages'))
   end)
   it('silences :echomsg', function()
     set_color_cb('Echomsging')
     start_prompt('e')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :e^                                      |
     ]])
-    eq('', meths.exec('messages', true))
+    eq('', exec_capture('messages'))
   end)
   it('does the right thing when throwing', function()
     set_color_cb('Throwing')
@@ -400,21 +334,20 @@ describe('Command-line coloring', function()
     screen:expect([[
                                               |
       {EOB:~                                       }|
-      {EOB:~                                       }|
       {MSEP:                                        }|
       :                                       |
       {ERR:E5407: Callback has thrown an exception:}|
+      {ERR: function DoPrompt[3]..Throwing, line 1:}|
       {ERR: ABC}                                    |
       :e^                                      |
     ]])
   end)
   it('stops executing callback after a number of errors', function()
-    set_color_cb('SplittedMultibyteStart')
+    set_color_cb('SplitMultibyteStart')
     start_prompt('let x = "«»«»«»«»«»"')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*2
       {MSEP:                                        }|
       :let x = "                              |
       {ERR:E5405: Chunk 0 start 10 splits multibyte}|
@@ -424,38 +357,27 @@ describe('Command-line coloring', function()
     feed('\n')
     screen:expect([[
       ^                                        |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
                                               |
     ]])
     feed('\n')
-    eq('let x = "«»«»«»«»«»"', meths.get_var('out'))
+    eq('let x = "«»«»«»«»«»"', api.nvim_get_var('out'))
     local msg = '\nE5405: Chunk 0 start 10 splits multibyte character'
-    eq(msg:rep(1), funcs.execute('messages'))
+    eq(msg:rep(1), fn.execute('messages'))
   end)
   it('allows interrupting callback with <C-c>', function()
     set_color_cb('Halting')
     start_prompt('echo 42')
     screen:expect([[
       ^                                        |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
                                               |
     ]])
     screen:sleep(500)
     feed('<C-c>')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*2
       {MSEP:                                        }|
       :                                       |
       {ERR:E5407: Callback has thrown an exception:}|
@@ -465,36 +387,21 @@ describe('Command-line coloring', function()
     redraw_input()
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :echo 42^                                |
     ]])
     feed('\n')
     screen:expect([[
       ^                                        |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :echo 42                                |
     ]])
     feed('\n')
-    eq('echo 42', meths.get_var('out'))
+    eq('echo 42', api.nvim_get_var('out'))
     feed('<C-c>')
     screen:expect([[
       ^                                        |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       Type  :qa  and pre...nter> to exit Nvim |
     ]])
   end)
@@ -503,12 +410,7 @@ describe('Command-line coloring', function()
     start_prompt('echo ("<C-v><CR><C-v><Nul><C-v><NL>")')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :echo {RBP1:(}"{SK:^M^@^@}"{RBP1:)}^                        |
     ]])
   end)
@@ -518,9 +420,7 @@ describe('Command-line coloring', function()
     start_prompt('#')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*3
       {MSEP:                                        }|
       :                                       |
       {ERR:E5400: Callback should return list}      |
@@ -528,13 +428,11 @@ describe('Command-line coloring', function()
     ]])
 
     feed('<CR><CR><CR>')
-    set_color_cb('ReturningGlobal', {{0, 1, 'Normal'}, 42})
+    set_color_cb('ReturningGlobal', { { 0, 1, 'Normal' }, 42 })
     start_prompt('#')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*3
       {MSEP:                                        }|
       :                                       |
       {ERR:E5401: List item 1 is not a List}        |
@@ -542,12 +440,11 @@ describe('Command-line coloring', function()
     ]])
 
     feed('<CR><CR><CR>')
-    set_color_cb('ReturningGlobal2', {{0, 1, 'Normal'}, {1}})
+    set_color_cb('ReturningGlobal2', { { 0, 1, 'Normal' }, { 1 } })
     start_prompt('+')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*2
       {MSEP:                                        }|
       :+                                      |
       {ERR:E5402: List item 1 has incorrect length:}|
@@ -556,12 +453,11 @@ describe('Command-line coloring', function()
     ]])
 
     feed('<CR><CR><CR>')
-    set_color_cb('ReturningGlobal2', {{0, 1, 'Normal'}, {2, 3, 'Normal'}})
+    set_color_cb('ReturningGlobal2', { { 0, 1, 'Normal' }, { 2, 3, 'Normal' } })
     start_prompt('+')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*2
       {MSEP:                                        }|
       :+                                      |
       {ERR:E5403: Chunk 1 start 2 not in range [1, }|
@@ -570,21 +466,19 @@ describe('Command-line coloring', function()
     ]])
 
     feed('<CR><CR><CR>')
-    set_color_cb('ReturningGlobal2', {{0, 1, 'Normal'}, {1, 3, 'Normal'}})
+    set_color_cb('ReturningGlobal2', { { 0, 1, 'Normal' }, { 1, 3, 'Normal' } })
     start_prompt('+')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*3
       {MSEP:                                        }|
       :+                                      |
       {ERR:E5404: Chunk 1 end 3 not in range (1, 2]}|
-                                              |
       :++^                                     |
     ]])
   end)
   it('does not error out when called from a errorred out cycle', function()
-    set_color_cb('ReturningGlobal', {{0, 1, 'Normal'}})
+    set_color_cb('ReturningGlobal', { { 0, 1, 'Normal' } })
     feed(dedent([[
       :set regexpengine=2
       :for pat in [' \ze*', ' \zs*']
@@ -606,117 +500,79 @@ describe('Command-line coloring', function()
       :
       :
     ]]))
-    eq({'', ':', 'E888 detected for  \\ze*', ':', 'E888 detected for  \\zs*'},
-       curbufmeths.get_lines(0, -1, false))
-    eq('', funcs.execute('messages'))
+    eq(
+      { '', ':', 'E888 detected for  \\ze*', ':', 'E888 detected for  \\zs*' },
+      api.nvim_buf_get_lines(0, 0, -1, false)
+    )
+    eq('', fn.execute('messages'))
   end)
   it('allows nesting input()s', function()
-    set_color_cb('ReturningGlobal', {{0, 1, 'RBP1'}}, '')
+    set_color_cb('ReturningGlobal', { { 0, 1, 'RBP1' } }, '')
     start_prompt('1')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :{RBP1:1}^                                      |
     ]])
 
-    set_color_cb('ReturningGlobal', {{0, 1, 'RBP2'}}, '1')
+    set_color_cb('ReturningGlobal', { { 0, 1, 'RBP2' } }, '1')
     start_prompt('2')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :{RBP2:2}^                                      |
     ]])
 
-    set_color_cb('ReturningGlobal', {{0, 1, 'RBP3'}}, '2')
+    set_color_cb('ReturningGlobal', { { 0, 1, 'RBP3' } }, '2')
     start_prompt('3')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :{RBP3:3}^                                      |
     ]])
 
-    set_color_cb('ReturningGlobal', {{0, 1, 'RBP4'}}, '3')
+    set_color_cb('ReturningGlobal', { { 0, 1, 'RBP4' } }, '3')
     start_prompt('4')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :{RBP4:4}^                                      |
     ]])
 
     feed('<CR>')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :{RBP3:3}4^                                     |
     ]])
     feed('<CR>')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :{RBP2:2}34^                                    |
     ]])
     feed('<CR>')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :{RBP1:1}234^                                   |
     ]])
     feed('<CR><CR><C-l>')
     screen:expect([[
       ^                                        |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
                                               |
     ]])
-    eq('1234', meths.get_var('out'))
-    eq('234', meths.get_var('out1'))
-    eq('34', meths.get_var('out2'))
-    eq('4', meths.get_var('out3'))
-    eq(0, funcs.exists('g:out4'))
+    eq('1234', api.nvim_get_var('out'))
+    eq('234', api.nvim_get_var('out1'))
+    eq('34', api.nvim_get_var('out2'))
+    eq('4', api.nvim_get_var('out3'))
+    eq(0, fn.exists('g:out4'))
   end)
   it('runs callback with the same data only once', function()
     local function new_recording_calls(...)
-      eq({...}, meths.get_var('recording_calls'))
-      meths.set_var('recording_calls', {})
+      eq({ ... }, api.nvim_get_var('recording_calls'))
+      api.nvim_set_var('recording_calls', {})
     end
     set_color_cb('Recording')
     start_prompt('')
@@ -725,22 +581,21 @@ describe('Command-line coloring', function()
     --     new_recording_calls(expected_result) -- (actual_before_fix)
     --
     feed('a')
-    new_recording_calls('a')  -- ('a', 'a')
+    new_recording_calls('a') -- ('a', 'a')
     feed('b')
     new_recording_calls('ab') -- ('a', 'ab', 'ab')
     feed('c')
-    new_recording_calls('abc')  -- ('ab', 'abc', 'abc')
+    new_recording_calls('abc') -- ('ab', 'abc', 'abc')
     feed('<BS>')
-    new_recording_calls('ab')  -- ('abc', 'ab', 'ab')
+    new_recording_calls('ab') -- ('abc', 'ab', 'ab')
     feed('<BS>')
-    new_recording_calls('a')  -- ('ab', 'a', 'a')
+    new_recording_calls('a') -- ('ab', 'a', 'a')
     feed('<BS>')
-    new_recording_calls()  -- ('a')
+    new_recording_calls() -- ('a')
     feed('<CR><CR>')
-    eq('', meths.get_var('out'))
+    eq('', api.nvim_get_var('out'))
   end)
-  it('does not crash when callback has caught not-a-editor-command exception',
-  function()
+  it('does not crash when callback has caught not-a-editor-command exception', function()
     source([[
       function CaughtExc(cmdline) abort
         try
@@ -753,30 +608,25 @@ describe('Command-line coloring', function()
     ]])
     set_color_cb('CaughtExc')
     start_prompt('1')
-    eq(1, meths.eval('1'))
+    eq(1, api.nvim_eval('1'))
   end)
 end)
 describe('Ex commands coloring', function()
   it('works', function()
-    meths.set_var('Nvim_color_cmdline', 'RainBowParens')
+    api.nvim_set_var('Nvim_color_cmdline', 'RainBowParens')
     feed(':echo (((1)))')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :echo {RBP1:(}{RBP2:(}{RBP3:(}1{RBP3:)}{RBP2:)}{RBP1:)}^                           |
     ]])
   end)
   it('still executes command-line even if errored out', function()
-    meths.set_var('Nvim_color_cmdline', 'SplittedMultibyteStart')
+    api.nvim_set_var('Nvim_color_cmdline', 'SplitMultibyteStart')
     feed(':let x = "«"\n')
-    eq('«', meths.get_var('x'))
+    eq('«', api.nvim_get_var('x'))
     local msg = 'E5405: Chunk 0 start 10 splits multibyte character'
-    eq('\n'..msg, funcs.execute('messages'))
+    eq('\n' .. msg, fn.execute('messages'))
   end)
   it('does not error out when called from a errorred out cycle', function()
     -- Apparently when there is a cycle in which one of the commands errors out
@@ -793,16 +643,17 @@ describe('Ex commands coloring', function()
       :  endtry
       :endfor
     ]]))
-    eq({'', 'E888 detected for  \\ze*', 'E888 detected for  \\zs*'},
-       curbufmeths.get_lines(0, -1, false))
-    eq('', funcs.execute('messages'))
+    eq(
+      { '', 'E888 detected for  \\ze*', 'E888 detected for  \\zs*' },
+      api.nvim_buf_get_lines(0, 0, -1, false)
+    )
+    eq('', fn.execute('messages'))
   end)
   it('does not crash when using `n` in debug mode', function()
     feed(':debug execute "echo 1"\n')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*2
       {MSEP:                                        }|
       Entering Debug mode.  Type "cont" to con|
       tinue.                                  |
@@ -823,12 +674,7 @@ describe('Ex commands coloring', function()
     feed('\n')
     screen:expect([[
       ^                                        |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
                                               |
     ]])
   end)
@@ -837,8 +683,7 @@ describe('Ex commands coloring', function()
     feed(':#x')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*2
       {MSEP:                                        }|
       :#                                      |
       {ERR:Error detected while processing :}       |
@@ -853,15 +698,17 @@ describe('Ex commands coloring', function()
       :#                                      |
       {ERR:Error detected while processing :}       |
       {ERR:E605: Exception not caught: 42}          |
-      {ERR:E749: empty buffer}                      |
+      {ERR:E749: Empty buffer}                      |
       {PE:Press ENTER or type command to continue}^ |
     ]])
     feed('<CR>')
-    eq('Error detected while processing :\nE605: Exception not caught: 42\nE749: empty buffer',
-       meths.exec('messages', true))
+    eq(
+      'Error detected while processing :\nE605: Exception not caught: 42\nE749: Empty buffer',
+      exec_capture('messages')
+    )
   end)
   it('errors out when failing to get callback', function()
-    meths.set_var('Nvim_color_cmdline', 42)
+    api.nvim_set_var('Nvim_color_cmdline', 42)
     feed(':#')
     screen:expect([[
                                               |
@@ -877,77 +724,52 @@ describe('Ex commands coloring', function()
 end)
 describe('Expressions coloring support', function()
   it('works', function()
-    meths.command('hi clear NvimNumber')
-    meths.command('hi clear NvimNestingParenthesis')
-    meths.command('hi NvimNumber guifg=Blue2')
-    meths.command('hi NvimNestingParenthesis guifg=Yellow')
+    command('hi clear NvimNumber')
+    command('hi clear NvimNestingParenthesis')
+    command('hi NvimNumber guifg=Blue2')
+    command('hi NvimNestingParenthesis guifg=Yellow')
     feed(':echo <C-r>=(((1)))')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       ={NPAR:(((}{NUM:1}{NPAR:)))}^                                |
     ]])
   end)
   it('does not use Nvim_color_expr', function()
-    meths.set_var('Nvim_color_expr', 42)
+    api.nvim_set_var('Nvim_color_expr', 42)
     -- Used to error out due to failing to get callback.
-    meths.command('hi clear NvimNumber')
-    meths.command('hi NvimNumber guifg=Blue2')
+    command('hi clear NvimNumber')
+    command('hi NvimNumber guifg=Blue2')
     feed(':<C-r>=1')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       ={NUM:1}^                                      |
     ]])
   end)
   it('works correctly with non-ASCII and control characters', function()
-    meths.command('hi clear NvimStringBody')
-    meths.command('hi clear NvimStringQuote')
-    meths.command('hi clear NvimInvalid')
-    meths.command('hi NvimStringQuote guifg=Blue3')
-    meths.command('hi NvimStringBody guifg=Blue4')
-    meths.command('hi NvimInvalid guifg=Red guibg=Blue')
+    command('hi clear NvimStringBody')
+    command('hi clear NvimStringQuote')
+    command('hi clear NvimInvalid')
+    command('hi NvimStringQuote guifg=Blue3')
+    command('hi NvimStringBody guifg=Blue4')
+    command('hi NvimInvalid guifg=Red guibg=Blue')
     feed('i<C-r>="«»"«»')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       ={SQ:"}{SB:«»}{SQ:"}{E:«»}^                                 |
     ]])
     feed('<C-c>')
     screen:expect([[
       ^                                        |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       {M:-- INSERT --}                            |
     ]])
     feed('<Esc>')
     screen:expect([[
       ^                                        |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
                                               |
     ]])
     feed(':<C-\\>e"<C-v><C-x>"<C-v><C-x>')
@@ -955,35 +777,20 @@ describe('Expressions coloring support', function()
     --              highlighting.
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       ={SQ:"}{SB:^X}{SQ:"}{ERR:^X}^                                 |
     ]])
     feed('<C-c>')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       :^                                       |
     ]])
-    funcs.setreg('a', {'\192'})
+    fn.setreg('a', { '\192' })
     feed('<C-r>="<C-r><C-r>a"<C-r><C-r>a"foo"')
     screen:expect([[
                                               |
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
-      {EOB:~                                       }|
+      {EOB:~                                       }|*6
       ={SQ:"}{SB:<c0>}{SQ:"}{E:<c0>"}{SB:foo}{E:"}^                        |
     ]])
   end)

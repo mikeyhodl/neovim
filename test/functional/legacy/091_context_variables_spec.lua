@@ -1,14 +1,15 @@
 -- Tests for getbufvar(), getwinvar(), gettabvar() and gettabwinvar().
 
-local helpers = require('test.functional.helpers')(after_each)
-local insert, source = helpers.insert, helpers.source
-local clear, expect = helpers.clear, helpers.expect
+local n = require('test.functional.testnvim')()
+
+local insert, source = n.insert, n.source
+local clear, expect = n.clear, n.expect
 
 describe('context variables', function()
   setup(clear)
 
   it('is working', function()
-    insert("start:")
+    insert('start:')
 
     -- Test for getbufvar().
     -- Use strings to test for memory leaks.

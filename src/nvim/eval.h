@@ -1,12 +1,25 @@
-#ifndef NVIM_EVAL_H
-#define NVIM_EVAL_H
+#pragma once
 
-#include "nvim/buffer_defs.h"
-#include "nvim/channel.h"
-#include "nvim/event/time.h"  // For TimeWatcher
-#include "nvim/ex_cmds_defs.h"  // For exarg_T
-#include "nvim/os/fileio.h"  // For FileDescriptor
-#include "nvim/os/stdpaths_defs.h"  // For XDGVarType
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include "nvim/channel_defs.h"  // IWYU pragma: keep
+#include "nvim/cmdexpand_defs.h"  // IWYU pragma: keep
+#include "nvim/eval/typval_defs.h"
+#include "nvim/eval_defs.h"  // IWYU pragma: keep
+#include "nvim/event/defs.h"
+#include "nvim/ex_cmds_defs.h"  // IWYU pragma: keep
+#include "nvim/grid_defs.h"  // IWYU pragma: keep
+#include "nvim/hashtab_defs.h"
+#include "nvim/macros_defs.h"
+#include "nvim/mbyte_defs.h"  // IWYU pragma: keep
+#include "nvim/msgpack_rpc/channel_defs.h"  // IWYU pragma: keep
+#include "nvim/option_defs.h"  // IWYU pragma: keep
+#include "nvim/os/fileio_defs.h"  // IWYU pragma: keep
+#include "nvim/os/stdpaths_defs.h"  // IWYU pragma: keep
+#include "nvim/types_defs.h"  // IWYU pragma: keep
+#include "nvim/vim_defs.h"  // IWYU pragma: keep
 
 #define COPYID_INC 2
 #define COPYID_MASK (~0x1)
@@ -36,7 +49,7 @@
 //      "exp_name"  NULL or non-NULL, to be freed later.
 //      "tv"        points to the Dictionary typval_T
 //      "newkey"    is the key for the new item.
-typedef struct lval_S {
+typedef struct {
   const char *ll_name;  ///< Start of variable name (can be NULL).
   size_t ll_name_len;   ///< Length of the .ll_name.
   char *ll_exp_name;    ///< NULL or expanded name in allocated memory.
@@ -46,11 +59,11 @@ typedef struct lval_S {
   list_T *ll_list;    ///< The list or NULL.
   bool ll_range;      ///< true when a [i:j] range was used.
   bool ll_empty2;     ///< Second index is empty: [i:].
-  long ll_n1;         ///< First index for list.
-  long ll_n2;         ///< Second index for list range.
-  dict_T *ll_dict;    ///< The Dictionary or NULL.
+  int ll_n1;          ///< First index for list.
+  int ll_n2;          ///< Second index for list range.
+  dict_T *ll_dict;    ///< The Dict or NULL.
   dictitem_T *ll_di;  ///< The dictitem or NULL.
-  char *ll_newkey;  ///< New key for Dict in allocated memory or NULL.
+  char *ll_newkey;    ///< New key for Dict in allocated memory or NULL.
   blob_T *ll_blob;    ///< The Blob or NULL.
 } lval_T;
 
@@ -73,6 +86,7 @@ typedef enum {
   VV_THIS_SESSION,
   VV_VERSION,
   VV_LNUM,
+  VV_TERMREQUEST,
   VV_TERMRESPONSE,
   VV_FNAME,
   VV_LANG,
@@ -152,34 +166,22 @@ typedef enum {
   VV_ARGV,
   VV_COLLATE,
   VV_EXITING,
+  VV_MAXCOL,
+  VV_STACKTRACE,
   // Nvim
   VV_STDERR,
   VV_MSGPACK_TYPES,
   VV__NULL_STRING,  // String with NULL value. For test purposes only.
   VV__NULL_LIST,  // List with NULL value. For test purposes only.
-  VV__NULL_DICT,  // Dictionary with NULL value. For test purposes only.
+  VV__NULL_DICT,  // Dict with NULL value. For test purposes only.
   VV__NULL_BLOB,  // Blob with NULL value. For test purposes only.
   VV_LUA,
+  VV_RELNUM,
+  VV_VIRTNUM,
 } VimVarIndex;
 
-/// All recognized msgpack types
-typedef enum {
-  kMPNil,
-  kMPBoolean,
-  kMPInteger,
-  kMPFloat,
-  kMPString,
-  kMPBinary,
-  kMPArray,
-  kMPMap,
-  kMPExt,
-} MessagePackType;
-#define LAST_MSGPACK_TYPE kMPExt
-
 /// Array mapping values from MessagePackType to corresponding list pointers
-extern const list_T *eval_msgpack_type_lists[LAST_MSGPACK_TYPE + 1];
-
-#undef LAST_MSGPACK_TYPE
+extern const list_T *eval_msgpack_type_lists[NUM_MSGPACK_TYPES];
 
 // Struct passed to get_v_event() and restore_v_event().
 typedef struct {
@@ -215,21 +217,11 @@ typedef struct {
   int repeat_count;
   int refcount;
   int emsg_count;  ///< Errors in a repeating timer.
-  long timeout;
+  int64_t timeout;
   bool stopped;
   bool paused;
   Callback callback;
 } timer_T;
-
-/// Type of assert_* check being performed
-typedef enum {
-  ASSERT_EQUAL,
-  ASSERT_NOTEQUAL,
-  ASSERT_MATCH,
-  ASSERT_NOTMATCH,
-  ASSERT_INRANGE,
-  ASSERT_OTHER,
-} assert_type_T;
 
 /// types for expressions.
 typedef enum {
@@ -246,19 +238,20 @@ typedef enum {
   EXPR_ISNOT,         ///< isnot
 } exprtype_T;
 
-/// Type for dict_list function
-typedef enum {
-  kDictListKeys,  ///< List dictionary keys.
-  kDictListValues,  ///< List dictionary values.
-  kDictListItems,  ///< List dictionary contents: [keys, values].
-} DictListType;
-
-typedef int (*ex_unletlock_callback)(lval_T *, char *, exarg_T *, int);
-
 // Used for checking if local variables or arguments used in a lambda.
 extern bool *eval_lavars_used;
+
+// Character used as separated in autoload function/variable names.
+#define AUTOLOAD_CHAR '#'
+
+/// Flag for expression evaluation.
+enum {
+  EVAL_EVALUATE = 1,  ///< when missing don't actually evaluate
+};
+
+/// Passed to an eval() function to enable evaluation.
+EXTERN evalarg_T EVALARG_EVALUATE INIT( = { EVAL_EVALUATE, NULL, NULL, NULL });
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "eval.h.generated.h"
 #endif
-#endif  // NVIM_EVAL_H

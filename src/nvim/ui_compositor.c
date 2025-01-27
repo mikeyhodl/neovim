@@ -1,40 +1,39 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 // Compositor: merge floating grids with the main grid for display in
 // TUI and non-multigrid UIs.
 //
 // Layer-based compositing: https://en.wikipedia.org/wiki/Digital_compositing
 
 #include <assert.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <stdbool.h>
-#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <uv.h>
 
 #include "klib/kvec.h"
-#include "nvim/api/private/helpers.h"
-#include "nvim/ascii.h"
+#include "nvim/api/private/defs.h"
+#include "nvim/ascii_defs.h"
+#include "nvim/buffer_defs.h"
+#include "nvim/globals.h"
 #include "nvim/grid.h"
 #include "nvim/highlight.h"
+#include "nvim/highlight_defs.h"
 #include "nvim/highlight_group.h"
 #include "nvim/log.h"
-#include "nvim/lua/executor.h"
-#include "nvim/main.h"
-#include "nvim/map.h"
+#include "nvim/macros_defs.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
-#include "nvim/os/os.h"
-#include "nvim/popupmenu.h"
-#include "nvim/ugrid.h"
+#include "nvim/option_vars.h"
+#include "nvim/os/time.h"
+#include "nvim/types_defs.h"
 #include "nvim/ui.h"
 #include "nvim/ui_compositor.h"
-#include "nvim/vim.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "ui_compositor.c.generated.h"
 #endif
 
-static UI *compositor = NULL;
 static int composed_uis = 0;
 kvec_t(ScreenGrid *) layers = KV_INITIAL_VALUE;
 
@@ -53,55 +52,24 @@ static int msg_current_row = INT_MAX;
 static bool msg_was_scrolled = false;
 
 static int msg_sep_row = -1;
-static schar_T msg_sep_char = { ' ', NUL };
-
-static PMap(uint32_t) ui_event_cbs = MAP_INIT;
+static schar_T msg_sep_char = schar_from_ascii(' ');
 
 static int dbghl_normal, dbghl_clear, dbghl_composed, dbghl_recompose;
 
 void ui_comp_init(void)
 {
-  if (compositor != NULL) {
-    return;
-  }
-  compositor = xcalloc(1, sizeof(UI));
-
-  compositor->rgb = true;
-  compositor->grid_resize = ui_comp_grid_resize;
-  compositor->grid_scroll = ui_comp_grid_scroll;
-  compositor->grid_cursor_goto = ui_comp_grid_cursor_goto;
-  compositor->raw_line = ui_comp_raw_line;
-  compositor->msg_set_pos = ui_comp_msg_set_pos;
-  compositor->event = ui_comp_event;
-
-  // Be unopinionated: will be attached together with a "real" ui anyway
-  compositor->width = INT_MAX;
-  compositor->height = INT_MAX;
-  for (UIExtension i = kUIGlobalCount; (int)i < kUIExtCount; i++) {
-    compositor->ui_ext[i] = true;
-  }
-
-  // TODO(bfredl): one day. in the future.
-  compositor->ui_ext[kUIMultigrid] = false;
-
-  // TODO(bfredl): this will be more complicated if we implement
-  // hlstate per UI (i e reduce hl ids for non-hlstate UIs)
-  compositor->ui_ext[kUIHlState] = false;
-
   kv_push(layers, &default_grid);
   curgrid = &default_grid;
-
-  ui_attach_impl(compositor, 0);
 }
 
+#ifdef EXITFREE
 void ui_comp_free_all_mem(void)
 {
-  UIEventCallback *event_cb;
-  map_foreach_value(&ui_event_cbs, event_cb, {
-    free_ui_event_callback(event_cb);
-  })
-  pmap_destroy(uint32_t)(&ui_event_cbs);
+  kv_destroy(layers);
+  xfree(linebuf);
+  xfree(attrbuf);
 }
+#endif
 
 void ui_comp_syn_init(void)
 {
@@ -111,13 +79,13 @@ void ui_comp_syn_init(void)
   dbghl_recompose = syn_check_group(S_LEN("RedrawDebugRecompose"));
 }
 
-void ui_comp_attach(UI *ui)
+void ui_comp_attach(RemoteUI *ui)
 {
   composed_uis++;
   ui->composed = true;
 }
 
-void ui_comp_detach(UI *ui)
+void ui_comp_detach(RemoteUI *ui)
 {
   composed_uis--;
   if (composed_uis == 0) {
@@ -131,6 +99,35 @@ void ui_comp_detach(UI *ui)
 bool ui_comp_should_draw(void)
 {
   return composed_uis != 0 && valid_screen;
+}
+
+/// Raises or lowers the layer, syncing comp_index with zindex.
+///
+/// This function adjusts the position of a layer in the layers array
+/// based on its zindex, either raising or lowering it.
+///
+/// @param[in]  layer_idx  Index of the layer to be raised or lowered.
+/// @param[in]  raise      Raise the layer if true, else lower it.
+void ui_comp_layers_adjust(size_t layer_idx, bool raise)
+{
+  size_t size = layers.size;
+  ScreenGrid *layer = layers.items[layer_idx];
+
+  if (raise) {
+    while (layer_idx < size - 1 && layer->zindex > layers.items[layer_idx + 1]->zindex) {
+      layers.items[layer_idx] = layers.items[layer_idx + 1];
+      layers.items[layer_idx]->comp_index = layer_idx;
+      layer_idx++;
+    }
+  } else {
+    while (layer_idx > 0 && layer->zindex < layers.items[layer_idx - 1]->zindex) {
+      layers.items[layer_idx] = layers.items[layer_idx - 1];
+      layers.items[layer_idx]->comp_index = layer_idx;
+      layer_idx--;
+    }
+  }
+  layers.items[layer_idx] = layer;
+  layer->comp_index = layer_idx;
 }
 
 /// Places `grid` at (col,row) position with (width * height) size.
@@ -253,7 +250,7 @@ bool ui_comp_set_grid(handle_T handle)
   return false;
 }
 
-static void ui_comp_raise_grid(ScreenGrid *grid, size_t new_index)
+void ui_comp_raise_grid(ScreenGrid *grid, size_t new_index)
 {
   size_t old_index = grid->comp_index;
   for (size_t i = old_index; i < new_index; i++) {
@@ -273,7 +270,7 @@ static void ui_comp_raise_grid(ScreenGrid *grid, size_t new_index)
   }
 }
 
-static void ui_comp_grid_cursor_goto(UI *ui, Integer grid_handle, Integer r, Integer c)
+void ui_comp_grid_cursor_goto(Integer grid_handle, Integer r, Integer c)
 {
   if (!ui_comp_should_draw() || !ui_comp_set_grid((int)grid_handle)) {
     return;
@@ -307,7 +304,7 @@ ScreenGrid *ui_comp_mouse_focus(int row, int col)
 {
   for (ssize_t i = (ssize_t)kv_size(layers) - 1; i > 0; i--) {
     ScreenGrid *grid = kv_A(layers, i);
-    if (grid->focusable
+    if (grid->mouse_enabled
         && row >= grid->comp_row && row < grid->comp_row + grid->rows
         && col >= grid->comp_col && col < grid->comp_col + grid->cols) {
       return grid;
@@ -339,7 +336,8 @@ static void compose_line(Integer row, Integer startcol, Integer endcol, LineFlag
   startcol = MAX(startcol, 0);
   // in case we start on the right half of a double-width char, we need to
   // check the left half. But skip it in output if it wasn't doublewidth.
-  int skipstart = 0, skipend = 0;
+  int skipstart = 0;
+  int skipend = 0;
   if (startcol > 0 && (flags & kLineFlagInvalid)) {
     startcol--;
     skipstart = 1;
@@ -356,7 +354,6 @@ static void compose_line(Integer row, Integer startcol, Integer endcol, LineFlag
   sattr_T *bg_attrs = &default_grid.attrs[default_grid.line_offset[row]
                                           + (size_t)startcol];
 
-  int grid_width, grid_height;
   while (col < endcol) {
     int until = 0;
     for (size_t i = 0; i < kv_size(layers); i++) {
@@ -366,8 +363,8 @@ static void compose_line(Integer row, Integer startcol, Integer endcol, LineFlag
       // first check to see if any grids have pending updates to width/height,
       // to ensure that we don't accidentally put any characters into `linebuf`
       // that have been invalidated.
-      grid_width = MIN(g->cols, g->comp_width);
-      grid_height = MIN(g->rows, g->comp_height);
+      int grid_width = MIN(g->cols, g->comp_width);
+      int grid_height = MIN(g->rows, g->comp_height);
       if (g->comp_row > row || row >= g->comp_row + grid_height
           || g->comp_disabled) {
         continue;
@@ -392,7 +389,7 @@ static void compose_line(Integer row, Integer startcol, Integer endcol, LineFlag
       grid = &msg_grid;
       sattr_T msg_sep_attr = (sattr_T)HL_ATTR(HLF_MSGSEP);
       for (int i = col; i < until; i++) {
-        memcpy(linebuf[i - startcol], msg_sep_char, sizeof(*linebuf));
+        linebuf[i - startcol] = msg_sep_char;
         attrbuf[i - startcol] = msg_sep_attr;
       }
     } else {
@@ -401,9 +398,8 @@ static void compose_line(Integer row, Integer startcol, Integer endcol, LineFlag
       memcpy(linebuf + (col - startcol), grid->chars + off, n * sizeof(*linebuf));
       memcpy(attrbuf + (col - startcol), grid->attrs + off, n * sizeof(*attrbuf));
       if (grid->comp_col + grid->cols > until
-          && grid->chars[off + n][0] == NUL) {
-        linebuf[until - 1 - startcol][0] = ' ';
-        linebuf[until - 1 - startcol][1] = '\0';
+          && grid->chars[off + n] == NUL) {
+        linebuf[until - 1 - startcol] = schar_from_ascii(' ');
         if (col == startcol && n == 1) {
           skipstart = 0;
         }
@@ -416,10 +412,10 @@ static void compose_line(Integer row, Integer startcol, Integer endcol, LineFlag
       for (int i = col - (int)startcol; i < until - startcol; i += width) {
         width = 1;
         // negative space
-        bool thru = strequal((char *)linebuf[i], " ") && bg_line[i][0] != NUL;
-        if (i + 1 < endcol - startcol && bg_line[i + 1][0] == NUL) {
+        bool thru = linebuf[i] == schar_from_ascii(' ') && bg_line[i] != NUL;
+        if (i + 1 < endcol - startcol && bg_line[i + 1] == NUL) {
           width = 2;
-          thru &= strequal((char *)linebuf[i + 1], " ");
+          thru &= linebuf[i + 1] == schar_from_ascii(' ');
         }
         attrbuf[i] = (sattr_T)hl_blend_attrs(bg_attrs[i], attrbuf[i], &thru);
         if (width == 2) {
@@ -434,34 +430,31 @@ static void compose_line(Integer row, Integer startcol, Integer endcol, LineFlag
 
     // Tricky: if overlap caused a doublewidth char to get cut-off, must
     // replace the visible half with a space.
-    if (linebuf[col - startcol][0] == NUL) {
-      linebuf[col - startcol][0] = ' ';
-      linebuf[col - startcol][1] = NUL;
+    if (linebuf[col - startcol] == NUL) {
+      linebuf[col - startcol] = schar_from_ascii(' ');
       if (col == endcol - 1) {
         skipend = 0;
       }
-    } else if (n > 1 && linebuf[col - startcol + 1][0] == NUL) {
+    } else if (col == startcol && n > 1 && linebuf[1] == NUL) {
       skipstart = 0;
     }
 
     col = until;
   }
-  if (linebuf[endcol - startcol - 1][0] == NUL) {
+  if (linebuf[endcol - startcol - 1] == NUL) {
     skipend = 0;
   }
 
   assert(endcol <= chk_width);
   assert(row < chk_height);
 
-  if (!(grid && grid == &default_grid)) {
-    // TODO(bfredl): too conservative, need check
-    // grid->line_wraps if grid->Width == Width
+  if (!(grid && (grid == &default_grid || (grid->comp_col == 0 && grid->cols == Columns)))) {
     flags = flags & ~kLineFlagWrap;
   }
 
   for (int i = skipstart; i < (endcol - skipend) - startcol; i++) {
     if (attrbuf[i] < 0) {
-      if (rdb_flags & RDB_INVALID) {
+      if (rdb_flags & kOptRdbFlagInvalid) {
         abort();
       } else {
         attrbuf[i] = 0;
@@ -477,7 +470,7 @@ static void compose_line(Integer row, Integer startcol, Integer endcol, LineFlag
 static void compose_debug(Integer startrow, Integer endrow, Integer startcol, Integer endcol,
                           int syn_id, bool delay)
 {
-  if (!(rdb_flags & RDB_COMPOSITOR)) {
+  if (!(rdb_flags & kOptRdbFlagCompositor) || startcol >= endcol) {
     return;
   }
 
@@ -503,9 +496,9 @@ static void compose_debug(Integer startrow, Integer endrow, Integer startcol, In
 static void debug_delay(Integer lines)
 {
   ui_call_flush();
-  uint64_t wd = (uint64_t)labs(p_wd);
+  uint64_t wd = (uint64_t)llabs(p_wd);
   uint64_t factor = (uint64_t)MAX(MIN(lines, 5), 1);
-  os_microdelay(factor * wd * 1000U, true);
+  os_sleep(factor * wd);
 }
 
 static void compose_area(Integer startrow, Integer endrow, Integer startcol, Integer endcol)
@@ -533,9 +526,9 @@ void ui_comp_compose_grid(ScreenGrid *grid)
   }
 }
 
-static void ui_comp_raw_line(UI *ui, Integer grid, Integer row, Integer startcol, Integer endcol,
-                             Integer clearcol, Integer clearattr, LineFlags flags,
-                             const schar_T *chunk, const sattr_T *attrs)
+void ui_comp_raw_line(Integer grid, Integer row, Integer startcol, Integer endcol, Integer clearcol,
+                      Integer clearattr, LineFlags flags, const schar_T *chunk,
+                      const sattr_T *attrs)
 {
   if (!ui_comp_should_draw() || !ui_comp_set_grid((int)grid)) {
     return;
@@ -575,7 +568,7 @@ static void ui_comp_raw_line(UI *ui, Integer grid, Integer row, Integer startcol
     compose_debug(row, row + 1, startcol, clearcol, dbghl_composed, true);
     compose_line(row, startcol, clearcol, flags);
   } else {
-    compose_debug(row, row + 1, startcol, endcol, dbghl_normal, false);
+    compose_debug(row, row + 1, startcol, endcol, dbghl_normal, endcol >= clearcol);
     compose_debug(row, row + 1, endcol, clearcol, dbghl_clear, true);
 #ifndef NDEBUG
     for (int i = 0; i < endcol - startcol; i++) {
@@ -600,14 +593,13 @@ bool ui_comp_set_screen_valid(bool valid)
   return old_val;
 }
 
-static void ui_comp_msg_set_pos(UI *ui, Integer grid, Integer row, Boolean scrolled,
-                                String sep_char)
+void ui_comp_msg_set_pos(Integer grid, Integer row, Boolean scrolled, String sep_char)
 {
   msg_grid.comp_row = (int)row;
   if (scrolled && row > 0) {
     msg_sep_row = (int)row - 1;
     if (sep_char.data) {
-      STRLCPY(msg_sep_char, sep_char.data, sizeof(msg_sep_char));
+      msg_sep_char = schar_from_buf(sep_char.data, sep_char.size);
     }
   } else {
     msg_sep_row = -1;
@@ -619,11 +611,11 @@ static void ui_comp_msg_set_pos(UI *ui, Integer grid, Integer row, Boolean scrol
              && (msg_current_row < Rows || (scrolled && !msg_was_scrolled))) {
     int delta = msg_current_row - (int)row;
     if (msg_grid.blending) {
-      int first_row = MAX((int)row - (scrolled?1:0), 0);
+      int first_row = MAX((int)row - (scrolled ? 1 : 0), 0);
       compose_area(first_row, Rows - delta, 0, Columns);
     } else {
       // scroll separator together with message text
-      int first_row = MAX((int)row - (msg_was_scrolled?1:0), 0);
+      int first_row = MAX((int)row - (msg_was_scrolled ? 1 : 0), 0);
       ui_composed_call_grid_scroll(1, first_row, Rows, 0, Columns, delta, 0);
       if (scrolled && !msg_was_scrolled && row > 0) {
         compose_area(row - 1, row, 0, Columns);
@@ -641,12 +633,12 @@ static void ui_comp_msg_set_pos(UI *ui, Integer grid, Integer row, Boolean scrol
 static bool curgrid_covered_above(int row)
 {
   bool above_msg = (kv_A(layers, kv_size(layers) - 1) == &msg_grid
-                    && row < msg_current_row - (msg_was_scrolled?1:0));
-  return kv_size(layers) - (above_msg?1:0) > curgrid->comp_index + 1;
+                    && row < msg_current_row - (msg_was_scrolled ? 1 : 0));
+  return kv_size(layers) - (above_msg ? 1 : 0) > curgrid->comp_index + 1;
 }
 
-static void ui_comp_grid_scroll(UI *ui, Integer grid, Integer top, Integer bot, Integer left,
-                                Integer right, Integer rows, Integer cols)
+void ui_comp_grid_scroll(Integer grid, Integer top, Integer bot, Integer left, Integer right,
+                         Integer rows, Integer cols)
 {
   if (!ui_comp_should_draw() || !ui_comp_set_grid((int)grid)) {
     return;
@@ -674,13 +666,13 @@ static void ui_comp_grid_scroll(UI *ui, Integer grid, Integer top, Integer bot, 
     }
   } else {
     ui_composed_call_grid_scroll(1, top, bot, left, right, rows, cols);
-    if (rdb_flags & RDB_COMPOSITOR) {
+    if (rdb_flags & kOptRdbFlagCompositor) {
       debug_delay(2);
     }
   }
 }
 
-static void ui_comp_grid_resize(UI *ui, Integer grid, Integer width, Integer height)
+void ui_comp_grid_resize(Integer grid, Integer width, Integer height)
 {
   if (grid == 1) {
     ui_composed_call_grid_resize(1, width, height);
@@ -697,73 +689,4 @@ static void ui_comp_grid_resize(UI *ui, Integer grid, Integer width, Integer hei
       bufsize = new_bufsize;
     }
   }
-}
-
-static void ui_comp_event(UI *ui, char *name, Array args)
-{
-  Error err = ERROR_INIT;
-  UIEventCallback *event_cb;
-  bool handled = false;
-
-  map_foreach_value(&ui_event_cbs, event_cb, {
-    Object res = nlua_call_ref(event_cb->cb, name, args, false, &err);
-    if (res.type == kObjectTypeBoolean && res.data.boolean == true) {
-      handled = true;
-    }
-  })
-
-  if (!handled) {
-    ui_composed_call_event(name, args);
-  }
-}
-
-static void ui_comp_update_ext(void)
-{
-  memset(compositor->ui_ext, 0, ARRAY_SIZE(compositor->ui_ext));
-
-  for (size_t i = 0; i < kUIGlobalCount; i++) {
-    UIEventCallback *event_cb;
-
-    map_foreach_value(&ui_event_cbs, event_cb, {
-      if (event_cb->ext_widgets[i]) {
-        compositor->ui_ext[i] = true;
-        break;
-      }
-    })
-  }
-}
-
-void free_ui_event_callback(UIEventCallback *event_cb)
-{
-  api_free_luaref(event_cb->cb);
-  xfree(event_cb);
-}
-
-void ui_comp_add_cb(uint32_t ns_id, LuaRef cb, bool *ext_widgets)
-{
-  UIEventCallback *event_cb = xcalloc(1, sizeof(UIEventCallback));
-  event_cb->cb = cb;
-  memcpy(event_cb->ext_widgets, ext_widgets, ARRAY_SIZE(event_cb->ext_widgets));
-  if (event_cb->ext_widgets[kUIMessages]) {
-    event_cb->ext_widgets[kUICmdline] = true;
-  }
-
-  UIEventCallback **item = (UIEventCallback **)pmap_ref(uint32_t)(&ui_event_cbs, ns_id, true);
-  if (*item) {
-    free_ui_event_callback(*item);
-  }
-  *item = event_cb;
-
-  ui_comp_update_ext();
-  ui_refresh();
-}
-
-void ui_comp_remove_cb(uint32_t ns_id)
-{
-  if (pmap_has(uint32_t)(&ui_event_cbs, ns_id)) {
-    free_ui_event_callback(pmap_get(uint32_t)(&ui_event_cbs, ns_id));
-    pmap_del(uint32_t)(&ui_event_cbs, ns_id);
-  }
-  ui_comp_update_ext();
-  ui_refresh();
 }

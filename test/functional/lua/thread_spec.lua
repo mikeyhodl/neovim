@@ -1,13 +1,15 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local assert_alive = helpers.assert_alive
-local clear = helpers.clear
-local feed = helpers.feed
-local eq = helpers.eq
-local exec_lua = helpers.exec_lua
-local next_msg = helpers.next_msg
-local NIL = helpers.NIL
-local pcall_err = helpers.pcall_err
+
+local assert_alive = n.assert_alive
+local clear = n.clear
+local feed = n.feed
+local eq = t.eq
+local exec_lua = n.exec_lua
+local next_msg = n.next_msg
+local NIL = vim.NIL
+local pcall_err = t.pcall_err
 
 describe('thread', function()
   local screen
@@ -15,35 +17,43 @@ describe('thread', function()
   before_each(function()
     clear()
     screen = Screen.new(50, 10)
-    screen:attach()
-    screen:set_default_attr_ids({
-      [1] = {bold = true, foreground = Screen.colors.Blue1},
-      [2] = {bold = true, reverse = true},
-      [3] = {foreground = Screen.colors.Grey100, background = Screen.colors.Red},
-      [4] = {bold = true, foreground = Screen.colors.SeaGreen4},
-      [5] = {bold = true},
-    })
   end)
 
-  it('entry func is executed in protected mode', function()
+  it('handle non-string error', function()
     exec_lua [[
-      local thread = vim.loop.new_thread(function()
-        error('Error in thread entry func')
+      local thread = vim.uv.new_thread(function()
+        error()
       end)
-      vim.loop.thread_join(thread)
+      vim.uv.thread_join(thread)
     ]]
 
     screen:expect([[
                                                         |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {2:                                                  }|
-      {3:Error in luv thread:}                              |
-      {3:[string "<nvim>"]:2: Error in thread entry func}   |
-      {4:Press ENTER or type command to continue}^           |
+      {1:~                                                 }|*5
+      {3:                                                  }|
+      {9:Error in luv thread:}                              |
+      {9:[NULL]}                                            |
+      {6:Press ENTER or type command to continue}^           |
+    ]])
+    feed('<cr>')
+    assert_alive()
+  end)
+
+  it('entry func is executed in protected mode', function()
+    exec_lua [[
+      local thread = vim.uv.new_thread(function()
+        error('Error in thread entry func')
+      end)
+      vim.uv.thread_join(thread)
+    ]]
+
+    screen:expect([[
+                                                        |
+      {1:~                                                 }|*5
+      {3:                                                  }|
+      {9:Error in luv thread:}                              |
+      {9:[string "<nvim>"]:2: Error in thread entry func}   |
+      {6:Press ENTER or type command to continue}^           |
     ]])
     feed('<cr>')
     assert_alive()
@@ -51,30 +61,26 @@ describe('thread', function()
 
   it('callback is executed in protected mode', function()
     exec_lua [[
-      local thread = vim.loop.new_thread(function()
-        local timer = vim.loop.new_timer()
+      local thread = vim.uv.new_thread(function()
+        local timer = vim.uv.new_timer()
         local function ontimeout()
           timer:stop()
           timer:close()
           error('Error in thread callback')
         end
         timer:start(10, 0, ontimeout)
-        vim.loop.run()
+        vim.uv.run()
       end)
-      vim.loop.thread_join(thread)
+      vim.uv.thread_join(thread)
     ]]
 
     screen:expect([[
                                                         |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {2:                                                  }|
-      {3:Error in luv callback, thread:}                    |
-      {3:[string "<nvim>"]:6: Error in thread callback}     |
-      {4:Press ENTER or type command to continue}^           |
+      {1:~                                                 }|*5
+      {3:                                                  }|
+      {9:Error in luv callback, thread:}                    |
+      {9:[string "<nvim>"]:6: Error in thread callback}     |
+      {6:Press ENTER or type command to continue}^           |
     ]])
     feed('<cr>')
     assert_alive()
@@ -83,44 +89,30 @@ describe('thread', function()
   describe('print', function()
     it('works', function()
       exec_lua [[
-        local thread = vim.loop.new_thread(function()
+        local thread = vim.uv.new_thread(function()
           print('print in thread')
         end)
-        vim.loop.thread_join(thread)
+        vim.uv.thread_join(thread)
       ]]
 
       screen:expect([[
         ^                                                  |
-        {1:~                                                 }|
-        {1:~                                                 }|
-        {1:~                                                 }|
-        {1:~                                                 }|
-        {1:~                                                 }|
-        {1:~                                                 }|
-        {1:~                                                 }|
-        {1:~                                                 }|
+        {1:~                                                 }|*8
         print in thread                                   |
       ]])
     end)
 
     it('vim.inspect', function()
       exec_lua [[
-        local thread = vim.loop.new_thread(function()
+        local thread = vim.uv.new_thread(function()
           print(vim.inspect({1,2}))
         end)
-        vim.loop.thread_join(thread)
+        vim.uv.thread_join(thread)
       ]]
 
       screen:expect([[
         ^                                                  |
-        {1:~                                                 }|
-        {1:~                                                 }|
-        {1:~                                                 }|
-        {1:~                                                 }|
-        {1:~                                                 }|
-        {1:~                                                 }|
-        {1:~                                                 }|
-        {1:~                                                 }|
+        {1:~                                                 }|*8
         { 1, 2 }                                          |
       ]])
     end)
@@ -140,13 +132,13 @@ describe('thread', function()
         function Thread_Test:do_test()
           local async
           local on_async = self.on_async
-          async = vim.loop.new_async(function(ret)
+          async = vim.uv.new_async(function(ret)
             on_async(ret)
             async:close()
           end)
           local thread =
-            vim.loop.new_thread(self.entry_func, async, self.entry_str, self.args)
-          vim.loop.thread_join(thread)
+            vim.uv.new_thread(self.entry_func, async, self.entry_str, self.args)
+          vim.uv.thread_join(thread)
         end
 
         Thread_Test.new = function(entry, on_async, ...)
@@ -172,13 +164,13 @@ describe('thread', function()
         thread_test:do_test()
       ]]
 
-      eq({'notification', 'result', {true}}, next_msg())
+      eq({ 'notification', 'result', { true } }, next_msg())
     end)
 
-    it('loop', function()
+    it('uv', function()
       exec_lua [[
         local entry = function(async)
-          async:send(vim.loop.version())
+          async:send(vim.uv.version())
         end
         local on_async = function(ret)
           vim.rpcnotify(1, ret)
@@ -188,7 +180,7 @@ describe('thread', function()
       ]]
 
       local msg = next_msg()
-      eq(msg[1], 'notification')
+      eq('notification', msg[1])
       assert(tonumber(msg[2]) >= 72961)
     end)
 
@@ -204,7 +196,7 @@ describe('thread', function()
         thread_test:do_test()
       ]]
 
-      eq({'notification', 'result', {{33, NIL, 'text'}}}, next_msg())
+      eq({ 'notification', 'result', { { 33, NIL, 'text' } } }, next_msg())
     end)
 
     it('json', function()
@@ -219,7 +211,7 @@ describe('thread', function()
         thread_test:do_test()
       ]]
 
-      eq({'notification', 'result', {{33, NIL, 'text'}}}, next_msg())
+      eq({ 'notification', 'result', { { 33, NIL, 'text' } } }, next_msg())
     end)
 
     it('diff', function()
@@ -234,14 +226,18 @@ describe('thread', function()
         thread_test:do_test()
       ]]
 
-      eq({'notification', 'result',
-          {table.concat({
+      eq({
+        'notification',
+        'result',
+        {
+          table.concat({
             '@@ -1 +1 @@',
             '-Hello',
             '+Helli',
-            ''
-          }, '\n')}},
-        next_msg())
+            '',
+          }, '\n'),
+        },
+      }, next_msg())
     end)
   end)
 end)
@@ -259,50 +255,40 @@ describe('threadpool', function()
       local after_work_fn = function(ret)
         vim.rpcnotify(1, 'result', ret)
       end
-      local work = vim.loop.new_work(work_fn, after_work_fn)
+      local work = vim.uv.new_work(work_fn, after_work_fn)
       work:queue()
     ]]
 
-    eq({'notification', 'result', {true}}, next_msg())
+    eq({ 'notification', 'result', { true } }, next_msg())
   end)
 
   it('with invalid argument', function()
-    local status = pcall_err(exec_lua, [[
-      local work = vim.loop.new_thread(function() end, function() end)
+    local status = pcall_err(
+      exec_lua,
+      [[
+      local work = vim.uv.new_thread(function() end, function() end)
       work:queue({})
-    ]])
+    ]]
+    )
 
-    eq([[Error executing lua: [string "<nvim>"]:0: Error: thread arg not support type 'function' at 1]],
-       status)
+    eq([[Error: thread arg not support type 'function' at 1]], status)
   end)
 
   it('with invalid return value', function()
     local screen = Screen.new(50, 10)
-    screen:attach()
-    screen:set_default_attr_ids({
-      [1] = {bold = true, foreground = Screen.colors.Blue1},
-      [2] = {bold = true, reverse = true},
-      [3] = {foreground = Screen.colors.Grey100, background = Screen.colors.Red},
-      [4] = {bold = true, foreground = Screen.colors.SeaGreen4},
-      [5] = {bold = true},
-    })
 
     exec_lua [[
-      local work = vim.loop.new_work(function() return {} end, function() end)
+      local work = vim.uv.new_work(function() return {} end, function() end)
       work:queue()
     ]]
 
     screen:expect([[
                                                         |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {2:                                                  }|
-      {3:Error in luv thread:}                              |
-      {3:Error: thread arg not support type 'table' at 1}   |
-      {4:Press ENTER or type command to continue}^           |
+      {1:~                                                 }|*5
+      {3:                                                  }|
+      {9:Error in luv thread:}                              |
+      {9:Error: thread arg not support type 'table' at 1}   |
+      {6:Press ENTER or type command to continue}^           |
     ]])
   end)
 
@@ -319,7 +305,7 @@ describe('threadpool', function()
 
         function Threadpool_Test:do_test()
           local work =
-            vim.loop.new_work(self.work_fn, self.after_work)
+            vim.uv.new_work(self.work_fn, self.after_work)
           work:queue(self.work_fn_str, self.args)
         end
 
@@ -334,10 +320,10 @@ describe('threadpool', function()
       ]]
     end)
 
-    it('loop', function()
+    it('uv', function()
       exec_lua [[
         local work_fn = function()
-          return vim.loop.version()
+          return vim.uv.version()
         end
         local after_work_fn = function(ret)
           vim.rpcnotify(1, ret)
@@ -347,7 +333,7 @@ describe('threadpool', function()
       ]]
 
       local msg = next_msg()
-      eq(msg[1], 'notification')
+      eq('notification', msg[1])
       assert(tonumber(msg[2]) >= 72961)
     end)
 
@@ -364,7 +350,7 @@ describe('threadpool', function()
         threadpool_test:do_test()
       ]]
 
-      eq({'notification', 'result', {{33, NIL, 'text'}}}, next_msg())
+      eq({ 'notification', 'result', { { 33, NIL, 'text' } } }, next_msg())
     end)
 
     it('json', function()
@@ -380,7 +366,7 @@ describe('threadpool', function()
         threadpool_test:do_test()
       ]]
 
-      eq({'notification', 'result', {{33, NIL, 'text'}}}, next_msg())
+      eq({ 'notification', 'result', { { 33, NIL, 'text' } } }, next_msg())
     end)
 
     it('work', function()
@@ -395,14 +381,18 @@ describe('threadpool', function()
         threadpool_test:do_test()
       ]]
 
-      eq({'notification', 'result',
-          {table.concat({
+      eq({
+        'notification',
+        'result',
+        {
+          table.concat({
             '@@ -1 +1 @@',
             '-Hello',
             '+Helli',
-            ''
-          }, '\n')}},
-        next_msg())
+            '',
+          }, '\n'),
+        },
+      }, next_msg())
     end)
   end)
 end)

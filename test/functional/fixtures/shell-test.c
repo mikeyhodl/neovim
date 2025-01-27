@@ -1,14 +1,12 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdint.h>
 #ifdef _MSC_VER
-#include <Windows.h>
-#define usleep(usecs) Sleep(usecs/1000)
+# include <Windows.h>
+# define usleep(usecs) Sleep(usecs/1000)
 #else
-#include <unistd.h>
+# include <unistd.h>
 #endif
 
 static void flush_wait(void)
@@ -52,10 +50,14 @@ int main(int argc, char **argv)
     help();
   }
 
+#ifdef _MSC_VER
+  SetConsoleOutputCP(CP_UTF8);
+#endif
+
   if (argc >= 2) {
     if (strcmp(argv[1], "-t") == 0) {
       if (argc < 3) {
-        fprintf(stderr,"Missing prompt text for -t option\n");
+        fprintf(stderr, "Missing prompt text for -t option\n");
         return 5;
       } else {
         fprintf(stderr, "%s $ ", argv[2]);
@@ -106,18 +108,18 @@ int main(int argc, char **argv)
       char cmd[100];
       int arg;
 
-      while (1) {
+      while (true) {
         fprintf(stderr, "interact $ ");
 
         if (fgets(input, sizeof(input), stdin) == NULL) {
           break;  // EOF
         }
 
-        if(1 == sscanf(input, "%99s %d", cmd, &arg)) {
+        if (1 == sscanf(input, "%99s %d", cmd, &arg)) {
           arg = 0;
         }
         if (strcmp(cmd, "exit") == 0) {
-            return arg;
+          return arg;
         } else {
           fprintf(stderr, "command not found: %s\n", cmd);
         }

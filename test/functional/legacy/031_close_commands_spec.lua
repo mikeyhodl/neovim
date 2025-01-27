@@ -9,15 +9,15 @@
 -- :buf
 -- :edit
 
-local helpers = require('test.functional.helpers')(after_each)
+local n = require('test.functional.testnvim')()
 
-local feed = helpers.feed
-local clear = helpers.clear
-local source = helpers.source
-local insert = helpers.insert
-local expect = helpers.expect
-local feed_command = helpers.feed_command
-local expect_exit = helpers.expect_exit
+local feed = n.feed
+local clear = n.clear
+local source = n.source
+local insert = n.insert
+local expect = n.expect
+local feed_command = n.feed_command
+local expect_exit = n.expect_exit
 
 describe('Commands that close windows and/or buffers', function()
   local function cleanup()
@@ -119,9 +119,12 @@ describe('Commands that close windows and/or buffers', function()
     feed_command('q!')
     feed('<CR>')
     expect('testtext 1')
-    expect_exit(source, [[
+    expect_exit(
+      source,
+      [[
       q!
       " Now nvim should have exited
-      throw "Oh, Not finished yet."]])
+      throw "Oh, Not finished yet."]]
+    )
   end)
 end)

@@ -82,7 +82,7 @@ After editing for a while you will have text in registers, marks in various
 files, a command line history filled with carefully crafted commands.  When
 you exit Vim all of this is lost.  But you can get it back!
 
-The ShaDa (abbreviation of SHAred DAta) file is designed to store status 
+The ShaDa (abbreviation of SHAred DAta) file is designed to store status
 information:
 
 	Command-line and Search pattern history
@@ -218,8 +218,8 @@ Obviously, the "w" stands for "write" and the "r" for "read".
    The ! character is used by ":wshada" to forcefully overwrite an existing
 file.  When it is omitted, and the file exists, the information is merged into
 the file.
-   The ! character used for ":rshada" means that all the information in ShaDa 
-file has priority over existing information, this may overwrite it.  Without 
+   The ! character used for ":rshada" means that all the information in ShaDa
+file has priority over existing information, this may overwrite it.  Without
 the ! only information that wasn't set is used.
    These commands can also be used to store info and use it again later.  You
 could make a directory full of ShaDa files, each containing info for a
@@ -255,7 +255,8 @@ well stand for "source").
 The windows that were open are restored, with the same position and size as
 before.  Mappings and option values are like before.
    What exactly is restored depends on the 'sessionoptions' option.  The
-default value is "blank,buffers,curdir,folds,help,options,winsize".
+default value is:
+"blank,buffers,curdir,folds,help,options,tabpages,winsize,terminal".
 
 	blank		keep empty windows
 	buffers		all buffers, not only the ones in a window
@@ -263,7 +264,9 @@ default value is "blank,buffers,curdir,folds,help,options,winsize".
 	folds		folds, also manually created ones
 	help		the help window
 	options		all options and mappings
+	tabpages	all tab pages
 	winsize		window sizes
+	terminal	include terminal windows
 
 Change this to your liking.  To also restore the size of the Vim window, for
 example, use: >
@@ -274,8 +277,8 @@ example, use: >
 SESSION HERE, SESSION THERE
 
 The obvious way to use sessions is when working on different projects.
-Suppose you store your session files in the directory "~/.config/nvim".  You 
-are currently working on the "secret" project and have to switch to the 
+Suppose you store your session files in the directory "~/.config/nvim".  You
+are currently working on the "secret" project and have to switch to the
 "boring" project: >
 
 	:wall
@@ -299,23 +302,23 @@ session file as a starting point.
 use, and save this in a session.  Then you can go back to this layout whenever
 you want.
    For example, this is a nice layout to use:
-
-	+----------------------------------------+
-	|		   VIM - main help file  |
-	|					 |
-	|Move around:  Use the cursor keys, or "h|
-	|help.txt================================|
-	|explorer   |				 |
-	|dir	    |~				 |
-	|dir	    |~				 |
-	|file	    |~				 |
-	|file	    |~				 |
-	|file	    |~				 |
-	|file	    |~				 |
-	|~/=========|[No File]===================|
-	|					 |
-	+----------------------------------------+
-
+>
+        +----------------------------------------+
+        |                  VIM - main help file  |
+        |                                        |
+        |Move around:  Use the cursor keys, or "h|
+        |help.txt================================|
+        |explorer   |                            |
+        |dir        |~                           |
+        |dir        |~                           |
+        |file       |~                           |
+        |file       |~                           |
+        |file       |~                           |
+        |file       |~                           |
+        |~/=========|[No File]===================|
+        |                                        |
+        +----------------------------------------+
+<
 This has a help window at the top, so that you can read this text.  The narrow
 vertical window on the left contains a file explorer.  This is a Vim plugin
 that lists the contents of a directory.  You can select files to edit there.
@@ -423,7 +426,7 @@ a line of text that tells Vim the values of options, to be used in this file
 only.
    A typical example is a C program where you make indents by a multiple of 4
 spaces.  This requires setting the 'shiftwidth' option to 4.  This modeline
-will do that:
+will do that: >
 
 	/* vim:set shiftwidth=4: */ ~
 
@@ -445,13 +448,13 @@ trust the files you are editing: >
 
 	:set nomodeline
 
-Use this format for the modeline:
+Use this format for the modeline: >
 
-	any-text vim:set {option}={value} ... : any-text ~
+	any-text vim:set {option}={value} ... : any-text
 
 The "any-text" indicates that you can put any text before and after the part
 that Vim will use.  This allows making it look like a comment, like what was
-done above with /* and */.
+done above with "/*" and "*/".
    The " vim:" part is what makes Vim recognize this line.  There must be
 white space before "vim", or "vim" must be at the start of the line.  Thus
 using something like "gvim:" will not work.
@@ -459,9 +462,9 @@ using something like "gvim:" will not work.
 typing the ":set" command, except that you need to insert a backslash before a
 colon (otherwise it would be seen as the end of the modeline).
 
-Another example:
+Another example: >
 
-	// vim:set textwidth=72 dir=c\:\tmp:  use c:\tmp here ~
+	// vim:set textwidth=72 dir=c\:\tmp:  use c:\tmp here
 
 There is an extra backslash before the first colon, so that it's included in
 the ":set" command.  The text after the second colon is ignored, thus a remark

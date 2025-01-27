@@ -526,8 +526,8 @@ msgstr " Käyttäjän määrittelemä täydennys (^U^N^P)"
 msgid " Omni completion (^O^N^P)"
 msgstr " Omnitäydennys (^O^N^P)"
 
-msgid " Spelling suggestion (s^N^P)"
-msgstr " Oikaisulukuehdotus (s^N^P)"
+msgid " Spelling suggestion (^S^N^P)"
+msgstr " Oikaisulukuehdotus (^S^N^P)"
 
 msgid " Keyword Local completion (^N^P)"
 msgstr " Avainsanan paikallinen täydennys (^N^P)"
@@ -1521,8 +1521,8 @@ msgid "E146: Regular expressions can't be delimited by letters"
 msgstr "E146: Säännöllistä ilmausta ei voi rajata kirjaimilla"
 
 #, c-format
-msgid "replace with %s (y/n/a/q/l/^E/^Y)?"
-msgstr "korvaa kohteella %s (y/n/a/q/l/^E/^Y)?"
+msgid "replace with %s? (y)es/(n)o/(a)ll/(q)uit/(l)ast/scroll up(^E)/down(^Y)"
+msgstr "korvaa kohteella %s? (y)es/(n)o/(a)ll/(q)uit/(l)ast/scroll up(^E)/down(^Y)"
 
 msgid "(Interrupted) "
 msgstr "(Keskeytetty)"
@@ -2896,99 +2896,6 @@ msgstr "haku pääsi ALKUUN, jatketaan LOPUSTA"
 msgid "search hit BOTTOM, continuing at TOP"
 msgstr "haku pääsi LOPPUUN, jatketaan ALUSTA"
 
-msgid "E550: Missing colon"
-msgstr "E550: kaksoispiste puuttuu"
-
-msgid "E551: Illegal component"
-msgstr "E551: Virheellinen komponentti"
-
-msgid "E552: digit expected"
-msgstr "E552: pitäisi olla numero"
-
-#, c-format
-msgid "Page %d"
-msgstr "Sivu %d"
-
-msgid "No text to be printed"
-msgstr "Ei tekstiä tulostettavaksi"
-
-#, fuzzy, c-format
-#~ msgid "Printing page %d (%zu%%)"
-#~ msgstr "Tulostetaan sivua %d (%d %%)"
-
-#, c-format
-msgid " Copy %d of %d"
-msgstr " Kopio %d/%d"
-
-#, c-format
-msgid "Printed: %s"
-msgstr "Tulostettu: %s"
-
-msgid "Printing aborted"
-msgstr "Tulostus peruttu"
-
-msgid "E455: Error writing to PostScript output file"
-msgstr "E455: Virhe kirjoitettaessa PostScriptiä tiedostoon"
-
-#, c-format
-msgid "E624: Can't open file \"%s\""
-msgstr "E624: Ei voi avata tiedostoa %s"
-
-#, c-format
-msgid "E457: Can't read PostScript resource file \"%s\""
-msgstr "E457: Ei voi lukea PostScript-resurssitiedostoa %s"
-
-#, c-format
-msgid "E618: file \"%s\" is not a PostScript resource file"
-msgstr "E618: tiedosto %s ei ole PostScript-resurssitiedosto"
-
-#, c-format
-msgid "E619: file \"%s\" is not a supported PostScript resource file"
-msgstr "E619: tiedosto %s ei ole tuettu PostScript-resurssitiedosto"
-
-#, c-format
-msgid "E621: \"%s\" resource file has wrong version"
-msgstr "E621: resurssitiedoston %s versio on väärä"
-
-msgid "E673: Incompatible multi-byte encoding and character set."
-msgstr "E673: Tukematon monitvauinen merkistökoodaus ja merkistö."
-
-msgid "E674: printmbcharset cannot be empty with multi-byte encoding."
-msgstr "E674: printmbcharset ei voi olla tyhjä monitavuiselle koodaukselle."
-
-msgid "E675: No default font specified for multi-byte printing."
-msgstr "E675: Ei oletusfonttia monitavuiseen tulostukseen"
-
-msgid "E324: Can't open PostScript output file"
-msgstr "E324: PostScript-tulostetiedoston avaus ei onnistu"
-
-#, c-format
-msgid "E456: Can't open file \"%s\""
-msgstr "E456: Tiedoston %s avaus ei onnistu"
-
-msgid "E456: Can't find PostScript resource file \"prolog.ps\""
-msgstr "E456: PostScript-resurssitiedostoa prolog.ps ei löydy"
-
-msgid "E456: Can't find PostScript resource file \"cidfont.ps\""
-msgstr "E456: PostScript-resurssitiedostoa cidfont.ps ei löydy"
-
-#, c-format
-msgid "E456: Can't find PostScript resource file \"%s.ps\""
-msgstr "E456: Postscript-resurssitiedosta %s.ps ei löydy"
-
-#, c-format
-msgid "E620: Unable to convert to print encoding \"%s\""
-msgstr "E620: Tulostuskoodaukseen %s muunto ei onnistu"
-
-msgid "Sending to printer..."
-msgstr "Lähetetään tulostimelle..."
-
-msgid "E365: Failed to print PostScript file"
-msgstr "E365: PostScript-tiedoston tulostus epäonnistui"
-
-msgid "Print job sent."
-msgstr "Tulostustyö lähetetty."
-
 msgid "Add a new database"
 msgstr "Lisää uusi tietokanta"
 
@@ -3753,8 +3660,8 @@ msgstr ""
 msgid "(2) An edit session for this file crashed.\n"
 msgstr "(2) Tiedostonmuokkausistunto on kaatunut.\n"
 
-msgid "    If this is the case, use \":recover\" or \"vim -r "
-msgstr "    Jos näin on, käytä komentoa :recover tai vim -r "
+msgid "    If this is the case, use \":recover\" or \"nvim -r "
+msgstr "    Jos näin on, käytä komentoa :recover tai nvim -r "
 
 msgid ""
 "\"\n"
@@ -5633,7 +5540,7 @@ msgstr "tekijät Bram Moolenaar et al."
 #~ msgstr "kirjoita :help iccf<Enter>    lisätietoa varten            "
 
 #, fuzzy
-#~ msgid "type  :CheckHealth<Enter>     to optimize Nvim"
+#~ msgid "type  :checkhealth<Enter>     to optimize Nvim"
 #~ msgstr "kirjoita :help iccf<Enter>    lisätietoa varten            "
 
 msgid "type  :q<Enter>               to exit         "

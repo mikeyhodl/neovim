@@ -230,7 +230,7 @@ function s:shada_check_type(type, val) abort
     return 0
   elseif a:type is# 'bin'
     " Binary string without zero bytes
-    if type isnot# 'binary'
+    if type isnot# 'string'
       return 'Expected binary string'
     elseif (type(a:val) == type({})
            \&& !empty(filter(copy(a:val._VAL), 'stridx(v:val, "\n") != -1')))
@@ -247,7 +247,7 @@ function s:shada_check_type(type, val) abort
     if type isnot# 'array'
       return 'Expected array value'
     elseif !empty(filter(copy(type(a:val) == type({}) ? a:val._VAL : a:val),
-                        \'msgpack#type(v:val) isnot# "binary"'))
+                        \'msgpack#type(v:val) isnot# "string"'))
       return 'Expected array of binary strings'
     else
       for element in (type(a:val) == type({}) ? a:val._VAL : a:val)
@@ -487,7 +487,7 @@ let s:SHADA_ENTRY_OBJECT_SEQUENCE = ['type', 'timestamp', 'length', 'data']
 ""
 " Convert list returned by msgpackparse() to a list of ShaDa objects
 "
-" @param[in]  mpack  List of VimL objects returned by msgpackparse().
+" @param[in]  mpack  List of Vimscript objects returned by msgpackparse().
 "
 " @return List of dictionaries with keys type, timestamp, length and data. Each 
 "         dictionary describes one ShaDa entry.

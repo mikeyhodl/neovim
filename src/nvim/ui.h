@@ -1,84 +1,23 @@
-#ifndef NVIM_UI_H
-#define NVIM_UI_H
+#pragma once
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
+#include <stdint.h>  // IWYU pragma: keep
 
-#include "nvim/api/private/defs.h"
-#include "nvim/globals.h"
-#include "nvim/highlight_defs.h"
-#include "nvim/memory.h"
+#include "nvim/api/private/defs.h"  // IWYU pragma: keep
+#include "nvim/event/defs.h"
+#include "nvim/grid_defs.h"  // IWYU pragma: keep
+#include "nvim/highlight_defs.h"  // IWYU pragma: keep
+#include "nvim/macros_defs.h"
+#include "nvim/types_defs.h"  // IWYU pragma: keep
+#include "nvim/ui_defs.h"  // IWYU pragma: keep
 
-typedef enum {
-  kUICmdline = 0,
-  kUIPopupmenu,
-  kUITabline,
-  kUIWildmenu,
-  kUIMessages,
-#define kUIGlobalCount kUILinegrid
-  kUILinegrid,
-  kUIMultigrid,
-  kUIHlState,
-  kUITermColors,
-  kUIFloatDebug,
-  kUIExtCount,
-} UIExtension;
-
-EXTERN const char *ui_ext_names[] INIT(= {
-  "ext_cmdline",
-  "ext_popupmenu",
-  "ext_tabline",
-  "ext_wildmenu",
-  "ext_messages",
-  "ext_linegrid",
-  "ext_multigrid",
-  "ext_hlstate",
-  "ext_termcolors",
-  "_debug_float",
-});
-
-typedef struct ui_t UI;
-
-enum {
-  kLineFlagWrap = 1,
-  kLineFlagInvalid = 2,
-};
-
-typedef int LineFlags;
-
-struct ui_t {
-  bool rgb;
-  bool override;  ///< Force highest-requested UI capabilities.
-  bool composed;
-  bool ui_ext[kUIExtCount];  ///< Externalized UI capabilities.
-  int width;
-  int height;
-  int pum_nlines;  /// actual nr. lines shown in PUM
-  bool pum_pos;  /// UI reports back pum position?
-  double pum_row;
-  double pum_col;
-  double pum_height;
-  double pum_width;
-  void *data;
-
-#ifdef INCLUDE_GENERATED_DECLARATIONS
-# include "ui_events.generated.h"
-#endif
-
-  void (*inspect)(UI *ui, Dictionary *info);
-};
-
-typedef struct ui_event_callback {
-  LuaRef cb;
-  bool ext_widgets[kUIGlobalCount];
-} UIEventCallback;
-
+// uncrustify:off
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "ui.h.generated.h"
-
 # include "ui_events_call.h.generated.h"
+EXTERN Array noargs INIT(= ARRAY_DICT_INIT);
 #endif
+// uncrustify:on
 
-EXTERN MultiQueue *resize_events;
-#endif  // NVIM_UI_H
+// vim.ui_attach() namespace of currently executed callback.
+EXTERN uint32_t ui_event_ns_id INIT( = 0);
+EXTERN MultiQueue *resize_events INIT( = NULL);

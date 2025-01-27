@@ -1,5 +1,5 @@
-local pathtrails = {}
-vim._so_trails = {}
+local pathtrails = {} --- @type table<string,true> ta
+vim._so_trails = {} --- @type string[]
 for s in (package.cpath .. ';'):gmatch('[^;]*;') do
   s = s:sub(1, -2) -- Strip trailing semicolon
   -- Find out path patterns. pathtrail should contain something like
@@ -12,6 +12,7 @@ for s in (package.cpath .. ';'):gmatch('[^;]*;') do
   end
 end
 
+--- @param name string
 function vim._load_package(name)
   local basename = name:gsub('%.', '/')
   local paths = { 'lua/' .. basename .. '.lua', 'lua/' .. basename .. '/init.lua' }
@@ -42,21 +43,38 @@ function vim._load_package(name)
   return nil
 end
 
--- Insert vim._load_package after the preloader at position 2
-table.insert(package.loaders, 2, vim._load_package)
+-- TODO(bfredl): dedicated state for this?
+if vim.api then
+  -- Insert vim._load_package after the preloader at position 2
+  table.insert(package.loaders, 2, vim._load_package)
+end
 
 -- builtin functions which always should be available
 require('vim.shared')
 
-vim._submodules = { inspect = true }
+vim._submodules = {
+  inspect = true,
+  version = true,
+  fs = true,
+  glob = true,
+  iter = true,
+  re = true,
+  text = true,
+  provider = true,
+}
 
 -- These are for loading runtime modules in the vim namespace lazily.
 setmetatable(vim, {
+  --- @param t table<any,any>
   __index = function(t, key)
     if vim._submodules[key] then
       t[key] = require('vim.' .. key)
       return t[key]
+    elseif key == 'inspect_pos' or key == 'show_pos' then
+      require('vim._inspector')
+      return t[key]
     elseif vim.startswith(key, 'uri_') then
+      --- @type any?
       local val = require('vim.uri')[key]
       if val ~= nil then
         -- Expose all `vim.uri` functions on the `vim` module.
@@ -70,11 +88,12 @@ setmetatable(vim, {
 --- <Docs described in |vim.empty_dict()| >
 ---@private
 --- TODO: should be in vim.shared when vim.shared always uses nvim-lua
+--- @diagnostic disable-next-line:duplicate-set-field
 function vim.empty_dict()
   return setmetatable({}, vim._empty_dict_mt)
 end
 
 -- only on main thread: functions for interacting with editor state
-if not vim.is_thread() then
+if vim.api and not vim.is_thread() then
   require('vim._editor')
 end

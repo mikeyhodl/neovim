@@ -1,14 +1,17 @@
-local helpers = require('test.functional.helpers')(after_each)
-local eq = helpers.eq
-local eval = helpers.eval
-local clear = helpers.clear
-local source = helpers.source
-local exc_exec = helpers.exc_exec
-local funcs = helpers.funcs
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local command = helpers.command
-local feed = helpers.feed
-local iswin = helpers.iswin
+
+local eq = t.eq
+local eval = n.eval
+local clear = n.clear
+local source = n.source
+local exc_exec = n.exc_exec
+local pcall_err = t.pcall_err
+local fn = n.fn
+local command = n.command
+local feed = n.feed
+local is_os = t.is_os
 
 describe('execute()', function()
   before_each(clear)
@@ -21,16 +24,16 @@ describe('execute()', function()
         silent! messages
       redir END
     ]])
-    eq(eval('g:__redir_output'), funcs.execute('messages'))
+    eq(eval('g:__redir_output'), fn.execute('messages'))
   end)
 
   it('captures the concatenated outputs of a List of commands', function()
-    eq("foobar", funcs.execute({'echon "foo"', 'echon "bar"'}))
-    eq("\nfoo\nbar", funcs.execute({'echo "foo"', 'echo "bar"'}))
+    eq('foobar', fn.execute({ 'echon "foo"', 'echon "bar"' }))
+    eq('\nfoo\nbar', fn.execute({ 'echo "foo"', 'echo "bar"' }))
   end)
 
   it('supports nested execute("execute(...)")', function()
-    eq('42', funcs.execute([[echon execute("echon execute('echon 42')")]]))
+    eq('42', fn.execute([[echon execute("echon execute('echon 42')")]]))
   end)
 
   it('supports nested :redir to a variable', function()
@@ -53,7 +56,7 @@ describe('execute()', function()
       return a
     endfunction
     ]])
-    eq('top1bar1foobar2bar3', funcs.execute('echon "top1"|call g:Bar()'))
+    eq('top1bar1foobar2bar3', fn.execute('echon "top1"|call g:Bar()'))
   end)
 
   it('supports nested :redir to a register', function()
@@ -75,65 +78,63 @@ describe('execute()', function()
       return @a
     endfunction
     ]])
-    eq('top1bar1foobar2bar3', funcs.execute('echon "top1"|call g:Bar()'))
+    eq('top1bar1foobar2bar3', fn.execute('echon "top1"|call g:Bar()'))
     -- :redir itself doesn't nest, so the redirection ends in g:Foo
     eq('bar1foo', eval('@a'))
   end)
 
   it('captures a transformed string', function()
-    eq('^A', funcs.execute('echon "\\<C-a>"'))
+    eq('^A', fn.execute('echon "\\<C-a>"'))
   end)
 
   it('returns empty string if the argument list is empty', function()
-    eq('', funcs.execute({}))
+    eq('', fn.execute({}))
     eq(0, exc_exec('let g:ret = execute(v:_null_list)'))
     eq('', eval('g:ret'))
   end)
 
   it('captures errors', function()
     local ret
-    ret = exc_exec('call execute(0.0)')
-    eq('Vim(call):E806: using Float as a String', ret)
     ret = exc_exec('call execute(v:_null_dict)')
-    eq('Vim(call):E731: using Dictionary as a String', ret)
+    eq('Vim(call):E731: Using a Dictionary as a String', ret)
     ret = exc_exec('call execute(function("tr"))')
-    eq('Vim(call):E729: using Funcref as a String', ret)
-    ret = exc_exec('call execute(["echo 42", 0.0, "echo 44"])')
-    eq('Vim:E806: using Float as a String', ret)
+    eq('Vim(call):E729: Using a Funcref as a String', ret)
     ret = exc_exec('call execute(["echo 42", v:_null_dict, "echo 44"])')
-    eq('Vim:E731: using Dictionary as a String', ret)
+    eq('Vim:E731: Using a Dictionary as a String', ret)
     ret = exc_exec('call execute(["echo 42", function("tr"), "echo 44"])')
-    eq('Vim:E729: using Funcref as a String', ret)
+    eq('Vim:E729: Using a Funcref as a String', ret)
   end)
 
   it('captures output with highlights', function()
-    eq('\nErrorMsg       xxx ctermfg=15 ctermbg=1 guifg=White guibg=Red',
-       eval('execute("hi ErrorMsg")'))
+    eq(
+      '\nErrorMsg       xxx ctermfg=15 ctermbg=1 guifg=White guibg=Red',
+      eval('execute("hi ErrorMsg")')
+    )
   end)
 
   it('does not corrupt the command display #5422', function()
     local screen = Screen.new(70, 7)
-    screen:attach()
     feed(':echo execute("hi ErrorMsg")<CR>')
-    screen:expect([[
+    screen:expect(
+      [[
                                                                             |
-      {1:~                                                                     }|
-      {1:~                                                                     }|
+      {1:~                                                                     }|*2
       {2:                                                                      }|
                                                                             |
       ErrorMsg       xxx ctermfg=15 ctermbg=1 guifg=White guibg=Red         |
       {3:Press ENTER or type command to continue}^                               |
-    ]], {
-      [1] = {bold = true, foreground = Screen.colors.Blue1},
-      [2] = {bold = true, reverse = true},
-      [3] = {bold = true, foreground = Screen.colors.SeaGreen4},
-    })
+    ]],
+      {
+        [1] = { bold = true, foreground = Screen.colors.Blue1 },
+        [2] = { bold = true, reverse = true },
+        [3] = { bold = true, foreground = Screen.colors.SeaGreen4 },
+      }
+    )
     feed('<CR>')
   end)
 
   it('places cursor correctly #6035', function()
     local screen = Screen.new(40, 6)
-    screen:attach()
     source([=[
       " test 1: non-silenced output goes as usual
       function! Test1()
@@ -190,30 +191,21 @@ describe('execute()', function()
     feed([[:call Test1()<cr>]])
     screen:expect([[
       ^                                        |
-      ~                                       |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      {1:~                                       }|*4
       ABCD                                    |
     ]])
 
     feed([[:call Test2()<cr>]])
     screen:expect([[
       ^                                        |
-      ~                                       |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      {1:~                                       }|*4
       1234ABCD                                |
     ]])
 
     feed([[:call Test3()<cr>]])
     screen:expect([[
       ^                                        |
-      ~                                       |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      {1:~                                       }|*4
       1234ABCDXZYZ                            |
     ]])
 
@@ -223,88 +215,92 @@ describe('execute()', function()
     -- "ef" was overwritten since msg_col was recovered wrongly
     screen:expect([[
       1234                                    |
-      Error detected while processing function|
-       Test4:                                 |
-      line    2:                              |
-      abcdABCD                                |
-      Press ENTER or type command to continue^ |
+      {9:Error detected while processing function}|
+      {9: Test4:}                                 |
+      {8:line    2:}                              |
+      {9:abcd}ABCD                                |
+      {6:Press ENTER or type command to continue}^ |
     ]])
 
     feed([[<cr>]]) -- to clear screen
     feed([[:call Test5()<cr>]])
     screen:expect([[
       ^                                        |
-      ~                                       |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      {1:~                                       }|*4
       1234ABCD                                |
     ]])
 
     feed([[:call Test6()<cr>]])
     screen:expect([[
                                               |
-      Error detected while processing function|
-       Test6:                                 |
-      line    2:                              |
-      E121ABCD                                |
-      Press ENTER or type command to continue^ |
+      {9:Error detected while processing function}|
+      {9: Test6:}                                 |
+      {8:line    2:}                              |
+      {9:E121}ABCD                                |
+      {6:Press ENTER or type command to continue}^ |
     ]])
 
     feed([[:call Test7()<cr>]])
     screen:expect([[
-      Error detected while processing function|
-       Test6:                                 |
-      line    2:                              |
-      E121ABCD                                |
+      {9:Error detected while processing function}|
+      {9: Test6:}                                 |
+      {8:line    2:}                              |
+      {9:E121}ABCD                                |
       ABCD                                    |
-      Press ENTER or type command to continue^ |
+      {6:Press ENTER or type command to continue}^ |
     ]])
   end)
 
   -- This deviates from vim behavior, but is consistent
   -- with how nvim currently displays the output.
   it('captures shell-command output', function()
-    local win_lf = iswin() and '\13' or ''
-    eq('\n:!echo foo\r\n\nfoo'..win_lf..'\n', funcs.execute('!echo foo'))
+    local win_lf = is_os('win') and '\13' or ''
+    eq('\n:!echo foo\r\n\nfoo' .. win_lf .. '\n', fn.execute('!echo foo'))
   end)
 
   describe('{silent} argument', function()
     it('captures & displays output for ""', function()
       local screen = Screen.new(40, 5)
-      screen:attach()
       command('let g:mes = execute("echon 42", "")')
       screen:expect([[
       ^                                        |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      {1:~                                       }|*3
       42                                      |
       ]])
       eq('42', eval('g:mes'))
     end)
 
+    it('gives E493 instead of prompting on backwards range for ""', function()
+      command('split')
+      eq(
+        'Vim(windo):E493: Backwards range given: 2,1windo echo',
+        pcall_err(fn.execute, '2,1windo echo', '')
+      )
+      eq(
+        'Vim(windo):E493: Backwards range given: 2,1windo echo',
+        pcall_err(fn.execute, { '2,1windo echo' }, '')
+      )
+    end)
+
     it('captures but does not display output for "silent"', function()
       local screen = Screen.new(40, 5)
-      screen:attach()
       command('let g:mes = execute("echon 42")')
       screen:expect([[
       ^                                        |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      {1:~                                       }|*3
                                               |
       ]])
       eq('42', eval('g:mes'))
 
       command('let g:mes = execute("echon 13", "silent")')
-      screen:expect{grid=[[
+      screen:expect {
+        grid = [[
       ^                                        |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      {1:~                                       }|*3
                                               |
-      ]], unchanged=true}
+      ]],
+        unchanged = true,
+      }
       eq('13', eval('g:mes'))
     end)
 
@@ -321,11 +317,8 @@ describe('execute()', function()
 
     it('propagates errors for "" and "silent"', function()
       local ret
-      ret = exc_exec('call execute(0.0, "")')
-      eq('Vim(call):E806: using Float as a String', ret)
-
       ret = exc_exec('call execute(v:_null_dict, "silent")')
-      eq('Vim(call):E731: using Dictionary as a String', ret)
+      eq('Vim(call):E731: Using a Dictionary as a String', ret)
 
       ret = exc_exec('call execute("echo add(1, 1)", "")')
       eq('Vim(echo):E897: List or Blob required', ret)

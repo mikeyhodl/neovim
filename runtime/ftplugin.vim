@@ -1,7 +1,8 @@
 " Vim support file to switch on loading plugins for file types
 "
-" Maintainer:	Bram Moolenaar <Bram@vim.org>
-" Last change:	2006 Apr 30
+" Maintainer:	The Vim Project <https://github.com/vim/vim>
+" Last change:	2023 Aug 10
+" Former Maintainer:	Bram Moolenaar <Bram@vim.org>
 
 if exists("did_load_ftplugin")
   finish
@@ -28,9 +29,10 @@ augroup filetypeplugin
       " When there is a dot it is used to separate filetype names.  Thus for
       " "aaa.bbb" load "aaa" and then "bbb".
       for name in split(s, '\.')
-        exe 'runtime! ftplugin/' . name . '.vim ftplugin/' . name . '_*.vim ftplugin/' . name . '/*.vim'
-        " Load lua ftplugins
-        exe printf('runtime! ftplugin/%s.lua ftplugin/%s_*.lua ftplugin/%s/*.lua', name, name, name)
+        " Load Lua ftplugins after Vim ftplugins _per directory_
+        " TODO(clason): use nvim__get_runtime when supports globs and modeline
+        " XXX: "[.]" in the first pattern makes it a wildcard on Windows
+        exe $'runtime! ftplugin/{name}[.]{{vim,lua}} ftplugin/{name}_*.{{vim,lua}} ftplugin/{name}/*.{{vim,lua}}'
       endfor
     endif
   endfunc

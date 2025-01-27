@@ -196,6 +196,7 @@ gR			Enter Virtual Replace mode: Each character you type
 
 							*v_r*
 {Visual}r{char}		Replace all selected characters by {char}.
+			CTRL-C will be inserted literally.
 
 							*v_C*
 {Visual}["x]C		Delete the highlighted lines [into register x] and
@@ -204,7 +205,6 @@ gR			Enter Virtual Replace mode: Each character you type
 							*v_S*
 {Visual}["x]S		Delete the highlighted lines [into register x] and
 			start insert (for {Visual} see |Visual-mode|).
-
 							*v_R*
 {Visual}["x]R		Currently just like {Visual}["x]S.  In a next version
 			it might work differently.
@@ -277,7 +277,16 @@ gr{char}		Replace the virtual characters under the cursor with
 			{char}.  This replaces in screen space, not file
 			space.  See |gR| and |Virtual-Replace-mode| for more
 			details.  As with |r| a count may be given.
-			{char} can be entered like with |r|.
+			{char} can be entered like with |r|, but characters
+			that have a special meaning in Insert mode, such as
+			most CTRL-keys, cannot be used.
+
+							*gr-default*
+			Nvim creates default mappings with "gr" as a prefix,
+			which may inhibit the behavior of |gr|. Use the
+			following to restore the builtin behavior: >
+				nnoremap <nowait> gr gr
+<
 
 						*digraph-arg*
 The argument for Normal mode commands like |r| and |t| is a single character.
@@ -422,9 +431,17 @@ octal number.
 Note that when 'nrformats' includes "octal", decimal numbers with leading
 zeros cause mistakes, because they can be confused with octal numbers.
 
-Note similarly, when 'nrformats' includes "bin", binary numbers with a leading
-'0x' or '0X' can be interpreted as hexadecimal rather than binary since '0b'
-are valid hexadecimal digits.
+Note similarly, when 'nrformats' includes both "bin" and "hex", binary numbers
+with a leading '0x' or '0X' can be interpreted as hexadecimal rather than
+binary since '0b' are valid hexadecimal digits.  CTRL-A on "0x0b11" results in
+"0x0b12", not "0x0b100".
+When 'nrformats' includes "bin" and doesn't include "hex", CTRL-A on "0b11" in
+"0x0b11" results in "0x0b100".
+
+When the number under the cursor is too big to fit into 64 bits, it will be
+rounded off to the nearest number that can be represented, and the
+addition/subtraction is skipped.  E.g. CTRL-X on 18446744073709551616 results
+in 18446744073709551615.  Same for larger numbers, such as 18446744073709551618.
 
 The CTRL-A command is very useful in a macro.  Example: Use the following
 steps to make a numbered list.
@@ -478,7 +495,7 @@ SHIFTING LINES LEFT OR RIGHT				*shift-left-right*
 			lines to [indent] (default 0).
 
 							*:>*
-:[range]> [flags]	Shift {count} [range] lines one 'shiftwidth' right.
+:[range]> [flags]	Shift [range] lines one 'shiftwidth' right.
 			Repeat '>' for shifting multiple 'shiftwidth's.
 			See |ex-flags| for [flags].
 
@@ -544,6 +561,8 @@ with ".".  Vim does not recognize a comment (starting with '"') after the
 			program {filter} (for {Visual} see |Visual-mode|).
 
 :{range}![!]{filter} [!][arg]				*:range!*
+			For executing external commands see |:!|
+
 			Filter {range} lines through the external program
 			{filter}.  Vim replaces the optional bangs with the
 			latest given command and appends the optional [arg].
@@ -575,18 +594,29 @@ with ".".  Vim does not recognize a comment (starting with '"') after the
 {Visual}=		Filter the highlighted lines like with ={motion}.
 
 
-						*tempfile* *setuid*
-Vim uses temporary files for filtering, generating diffs and also for
-tempname().  For Unix, the file will be in a private directory (only
-accessible by the current user) to avoid security problems (e.g., a symlink
-attack or other people reading your file).  When Vim exits the directory and
-all files in it are deleted.  When Vim has the setuid bit set this may cause
-problems, the temp file is owned by the setuid user but the filter command
-probably runs as the original user.
-Directory for temporary files is created in the first possible directory of:
+						*tempdir* *tempfile* *setuid*
+Nvim uses temporary files for filtering and generating diffs. Plugins also
+commonly use |tempname()| for their own purposes. On the first request for
+a temporary file, Nvim creates a common directory (the "Nvim tempdir"), to
+serve as storage for all temporary files (including `stdpath("run")` files
+|$XDG_RUNTIME_DIR|) in the current session.
+
+The Nvim tempdir is created in the first available system tempdir:
 	Unix:    $TMPDIR, /tmp, current-dir, $HOME.
 	Windows: $TMPDIR, $TMP, $TEMP, $USERPROFILE, current-dir.
 
+On unix the tempdir is created with permissions 0700 (only accessible by the
+current user) to avoid security problems (e.g. symlink attacks).  On exit,
+Nvim deletes the tempdir and its contents.
+							*E5431*
+If you see an error or |log| message like: >
+	E5431: tempdir disappeared (2 times)
+this means an external process on your system deleted the Nvim tempdir.
+Typically this is caused by "antivirus" or a misconfigured cleanup service.
+
+If Nvim has the setuid bit set this may cause problems: the temp file
+is owned by the setuid user but the filter command probably runs as the
+original user.
 
 
 4.2 Substitute						*:substitute*
@@ -601,9 +631,9 @@ Directory for temporary files is created in the first possible directory of:
 			current line only.  When [count] is given, replace in
 			[count] lines, starting with the last line in [range].
 			When [range] is omitted start in the current line.
-							*E939*
-			[count] must be a positive number.  Also see
-			|cmdline-ranges|.
+							*E939* *E1510*
+			[count] must be a positive number (max 2147483647)
+			Also see |cmdline-ranges|.
 
 			See |:s_flags| for [flags].
 			The delimiter doesn't need to be /, see
@@ -977,7 +1007,7 @@ inside of strings can change!  Also see 'softtabstop' option. >
 <			to display registers '1' and 'a'.  Spaces are allowed
 			in {arg}.
 
-							*:di* *:display*
+							*:di* *:dis* *:display*
 :di[splay] [arg]	Same as :registers.
 
 							*y* *yank*
@@ -1199,13 +1229,13 @@ Vim fills these registers with text from yank and delete commands.
    Numbered register 0 contains the text from the most recent yank command,
 unless the command specified another register with ["x].
    Numbered register 1 contains the text deleted by the most recent delete or
-change command, unless the command specified another register or the text is
-less than one line (the small delete register is used then).  An exception is
-made for the delete operator with these movement commands: |%|, |(|, |)|, |`|,
-|/|, |?|, |n|, |N|, |{| and |}|.  Register "1 is always used then (this is Vi
-compatible).  The "- register is used as well if the delete is within a line.
-Note that these characters may be mapped.  E.g. |%| is mapped by the matchit
-plugin.
+change command (even when the command specified another register), unless the
+text is less than one line (the small delete register is used then).  An
+exception is made for the delete operator with these movement commands: |%|,
+|(|, |)|, |`|, |/|, |?|, |n|, |N|, |{| and |}|.
+Register "1 is always used then (this is Vi compatible).  The "- register is
+used as well if the delete is within a line. Note that these characters may be
+mapped.  E.g. |%| is mapped by the matchit plugin.
    With each successive deletion or change, Vim shifts the previous contents
 of register 1 into register 2, 2 into 3, and so forth, losing the previous
 contents of register 9.
@@ -1270,8 +1300,8 @@ expression (like with the "/" command).
 The expression must evaluate to a String.  A Number is always automatically
 converted to a String.  For the "p" and ":put" command, if the result is a
 Float it's converted into a String.  If the result is a List each element is
-turned into a String and used as a line.  A Dictionary or FuncRef results in
-an error message (use string() to convert).
+turned into a String and used as a line.  A Dictionary is converted into a
+String.  A Funcref results in an error message (use string() to convert).
 
 If the "= register is used for the "p" command, the String is split up at <NL>
 characters.  If the String ends in a <NL>, it is regarded as a linewise
@@ -1413,18 +1443,17 @@ since formatting is highly dependent on the type of file.  It makes
 sense to use an |autoload| script, so the corresponding script is only loaded
 when actually needed and the script should be called <filetype>format.vim.
 
-For example, the XML filetype plugin distributed with Vim in the $VIMRUNTIME
-directory, sets the 'formatexpr' option to: >
+For example, the XML filetype plugin distributed with Vim in the
+$VIMRUNTIME/ftplugin directory, sets the 'formatexpr' option to: >
 
    setlocal formatexpr=xmlformat#Format()
 
 That means, you will find the corresponding script, defining the
-xmlformat#Format() function, in the directory:
-`$VIMRUNTIME/autoload/xmlformat.vim`
+xmlformat#Format() function, in the file `$VIMRUNTIME/autoload/xmlformat.vim`
 
 Here is an example script that removes trailing whitespace from the selected
-text.  Put it in your autoload directory, e.g. ~/.vim/autoload/format.vim: >
-
+text.  Put it in your autoload directory, e.g. ~/.vim/autoload/format.vim:
+>vim
   func! format#Format()
     " only reformat on explicit gq command
     if mode() != 'n'
@@ -1457,7 +1486,7 @@ debugging it helps to set the 'debug' option.
 
 							*right-justify*
 There is no command in Vim to right justify text.  You can do it with
-an external command, like "par" (e.g.: "!}par" to format until the end of the
+an external command, like "par" (e.g.: `:.,}!par` to format until the end of the
 paragraph) or set 'formatprg' to "par".
 
 							*format-comments*
@@ -1473,7 +1502,7 @@ white space).  Three types of comments can be used:
   lines.  An example is this list with dashes.
 - Three-piece comments that have a start string, an end string, and optional
   lines in between.  The strings for the start, middle and end are different.
-  An example is the C style comment:
+  An example is the C style comment: >
 	/*
 	 * this is a C comment
 	 */
@@ -1523,7 +1552,7 @@ type of comment string.  A part consists of:
 	some indent for the start or end part that can be removed.
 
 When a string has none of the 'f', 's', 'm' or 'e' flags, Vim assumes the
-comment string repeats at the start of each line.  The flags field may be
+comment string repeats at the start of each line.  The {flags} field may be
 empty.
 
 Any blank space in the text before and after the {string} is part of the
@@ -1548,20 +1577,20 @@ When you hit Return in a C-comment, Vim will insert the middle comment leader
 for the new line: " * ".  To close this comment you just have to type "/"
 before typing anything else on the new line.  This will replace the
 middle-comment leader with the end-comment leader and apply any specified
-alignment, leaving just " */".  There is no need to hit Backspace first.
+alignment, leaving just `" */"`.  There is no need to hit Backspace first.
 
 When there is a match with a middle part, but there also is a matching end
 part which is longer, the end part is used.  This makes a C style comment work
 without requiring the middle part to end with a space.
 
 Here is an example of alignment flags at work to make a comment stand out
-(kind of looks like a 1 too). Consider comment string: >
+(kind of looks like a 1 too). Consider comment string: >vim
 	:set comments=sr:/***,m:**,ex-2:******/
-<
+>
                                    /*** ~
                                      **<--right aligned from "r" flag ~
                                      ** ~
-offset 2 spaces for the "-2" flag--->** ~
+ offset 2 spaces for the "-2" flag-->** ~
                                    ******/ ~
 In this case, the first comment was typed, then return was pressed 4 times,
 then "/" was pressed to end the comment.
@@ -1713,8 +1742,6 @@ Note that when 'textwidth' is 0, Vim does no automatic formatting anyway (but
 does insert comment leaders according to the 'comments' option).  An exception
 is when the 'a' flag is present. |auto-format|
 
-Note that when 'paste' is on, Vim does no formatting at all.
-
 Note that 'textwidth' can be non-zero even if Vim never performs auto-wrapping;
 'textwidth' is still useful for formatting with "gq".
 
@@ -1726,10 +1753,10 @@ happens with formatting and auto-wrapping.  Opening a line after a line
 starting with "/*" or "*" and containing "*/", will cause no comment leader to
 be inserted, and the indent of the new line is taken from the line containing
 the start of the comment.
-E.g.:
-    /* ~
-     * Your typical comment. ~
-     */ ~
+E.g.: >
+    /*
+     * Your typical comment.
+     */
     The indent on this line is the same as the start of the above
     comment.
 

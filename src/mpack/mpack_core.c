@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <string.h>
 
 #include "mpack_core.h"
@@ -173,6 +170,9 @@ MPACK_API int mpack_write(mpack_tokbuf_t *tokbuf, char **buf, size_t *buflen,
 
 int mpack_rtoken(const char **buf, size_t *buflen, mpack_token_t *tok)
 {
+  if (*buflen == 0) {
+    return MPACK_EOF;
+  }
   unsigned char t = ADVANCE(buf, buflen);
   if (t < 0x80) {
     /* positive fixint */

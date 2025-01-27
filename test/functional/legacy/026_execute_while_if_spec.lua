@@ -1,11 +1,11 @@
 -- Test for :execute, :while and :if
 
-local helpers = require('test.functional.helpers')(after_each)
+local n = require('test.functional.testnvim')()
 
-local clear = helpers.clear
-local expect = helpers.expect
-local source = helpers.source
-local command = helpers.command
+local clear = n.clear
+local expect = n.expect
+local source = n.source
+local command = n.command
 
 describe(':execute, :while and :if', function()
   setup(clear)
